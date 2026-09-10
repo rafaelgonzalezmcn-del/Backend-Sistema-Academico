@@ -20,6 +20,15 @@ class TareaService
     public function create(array $validated, ?Request $request = null): Tarea
     {
         $tareaData = $this->prepararDatos($validated, $request);
+        
+        // Manejar archivo - separar en campos individuales
+        if (!empty($tareaData['archivo'])) {
+            $tareaData['archivo_ruta'] = $tareaData['archivo']['ruta'];
+            $tareaData['archivo_nombre'] = $tareaData['archivo']['nombre'];
+            $tareaData['archivo_tamano'] = $tareaData['archivo']['tamano'];
+            unset($tareaData['archivo']);
+        }
+        
         $tarea = Tarea::create($tareaData);
         
         $this->logActivity($this->logEvent('tarea', 'created'), $tarea, null, true);
@@ -211,7 +220,13 @@ class TareaService
         // Manejar archivo si existe
         if ($request && $request->hasFile('archivo')) {
             $archivo = $this->guardarArchivo($request->file('archivo'));
+            \Illuminate\Support\Facades\Log::info('TareaService: Archivo guardado', $archivo);
             $data['archivo'] = $archivo;
+        } else {
+            \Illuminate\Support\Facades\Log::info('TareaService: No hay archivo en el request', [
+                'hasFile' => $request ? $request->hasFile('archivo') : 'no request',
+                'files' => $request ? $request->allFiles() : 'no request'
+            ]);
         }
 
         return $data;

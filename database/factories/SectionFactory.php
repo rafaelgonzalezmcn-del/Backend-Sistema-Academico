@@ -57,4 +57,14 @@ class SectionFactory extends Factory
             'name' => $name,
         ]);
     }
+
+    /**
+     * Crea una sección con nombre único basado en timestamp.
+     */
+    public function uniqueName(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'name' => 'T' . time() . rand(1, 99),
+        ]);
+    }
 }

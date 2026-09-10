@@ -114,7 +114,18 @@ class UserService
         // Verificar si ya tiene una sección asignada
         if ($user->section_id && $user->section_id != $sectionId && !$force) {
             $user->load(['section', 'section.grade']);
-            throw new \Exception('El estudiante ya está matriculado en una sección.');
+            $currentSection = $user->section;
+            $gradeName = $currentSection?->grade?->name ?? 'Sin grado';
+            
+            // Lanzar excepción para que el controlador maneje la respuesta
+            throw new \Exception(json_encode([
+                'message' => 'El estudiante ya está matriculado en una sección.',
+                'current_section' => [
+                    'id' => $currentSection->id ?? null,
+                    'name' => $currentSection->name ?? '',
+                    'grade' => $gradeName
+                ]
+            ]));
         }
 
         $user->update(['section_id' => $sectionId]);

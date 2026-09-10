@@ -8,9 +8,12 @@ use App\Http\Resources\GradeResource;
 use App\Models\Grade;
 use App\Services\GradeService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class GradeController extends Controller
 {
+    const CACHE_TTL = 600; // 10 minutos
+
     public function __construct(private GradeService $gradeService)
     {
     }
@@ -42,6 +45,9 @@ class GradeController extends Controller
         $this->authorize('create', Grade::class);
 
         $grade = $this->gradeService->create($request->validated());
+        
+        // Invalidar cache de grados
+        Cache::forget('cache:grades:list');
 
         return response()->json([
             'data' => new GradeResource($grade),
@@ -70,6 +76,9 @@ class GradeController extends Controller
         $this->authorize('update', $grade);
 
         $grade = $this->gradeService->update($grade, $request->validated());
+        
+        // Invalidar cache de grados
+        Cache::forget('cache:grades:list');
 
         return response()->json([
             'data' => new GradeResource($grade),
@@ -85,6 +94,9 @@ class GradeController extends Controller
         $this->authorize('delete', $grade);
 
         $this->gradeService->delete($grade);
+        
+        // Invalidar cache de grados
+        Cache::forget('cache:grades:list');
 
         return response()->json(['message' => 'Grado eliminado correctamente']);
     }

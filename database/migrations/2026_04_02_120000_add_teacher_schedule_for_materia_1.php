@@ -13,18 +13,24 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Agregar un schedule para el profesor 7 en la materia 1 (para que pueda crear tareas en módulos de esa materia)
-        // Usando section_id=2 (Sección D) y horario diferente al existente para evitar conflicto
-        DB::table('class_schedules')->insert([
-            'teacher_id' => 7,
-            'subject_id' => 1,
-            'section_id' => 2,
-            'day' => 'Martes',
-            'start_time' => '08:00:00',
-            'end_time' => '10:00:00',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Buscar cualquier profesor existente
+        $teacherId = DB::table('users')
+            ->where('role_id', 3) // role_id 3 = profesor
+            ->first()?->id;
+
+        // Solo agregar schedule si existe un profesor
+        if ($teacherId) {
+            DB::table('class_schedules')->insert([
+                'teacher_id' => $teacherId,
+                'subject_id' => 1,
+                'section_id' => 2,
+                'day' => 'Martes',
+                'start_time' => '08:00:00',
+                'end_time' => '10:00:00',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     /**

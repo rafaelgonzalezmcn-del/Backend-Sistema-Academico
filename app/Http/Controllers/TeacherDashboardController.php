@@ -9,10 +9,14 @@ use App\Models\ClassSchedule;
 use App\Models\StudentCourse;
 use App\Models\SchoolYear;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class TeacherDashboardController extends Controller
 {
+    const DASHBOARD_TTL = 300; // 5 minutos
+    const COURSE_STATS_TTL = 300; // 5 minutos
+
     /**
      * GET /api/teacher/dashboard
      * Dashboard general del profesor
@@ -62,29 +66,33 @@ class TeacherDashboardController extends Controller
      */
     private function getAdminDashboard()
     {
-        // Total de cursos (combinaciones únicas de materia + sección)
-        $totalCourses = ClassSchedule::distinct('subject_id', 'section_id')->count('subject_id');
+        $cacheKey = 'teacher:dashboard:admin';
         
-        // Total de estudiantes únicos
-        $totalStudents = User::whereHas('role', fn($q) => $q->where('name', 'estudiante'))->count();
-        
-        // Cursos cerrados
-        $closedCourses = StudentCourse::distinct('subject_id', 'section_id', 'school_year_id')
-            ->whereIn('status', ['aprobado', 'reprobado', 'concluido', 'retirado'])
-            ->count('subject_id');
-        
-        // Cursos abiertos (tienen estudiantes en secciones pero no están cerrados)
-        $activeSections = Section::count();
-        $openCourses = $activeSections - $closedCourses;
-        
-        return response()->json([
-            'summary' => [
-                'total_courses' => $totalCourses,
-                'total_students' => $totalStudents,
-                'closed_courses' => $closedCourses,
-                'open_courses' => max(0, $openCourses)
-            ]
-        ]);
+        return Cache::remember($cacheKey, self::DASHBOARD_TTL, function () {
+            // Total de cursos (combinaciones únicas de materia + sección)
+            $totalCourses = ClassSchedule::distinct('subject_id', 'section_id')->count('subject_id');
+            
+            // Total de estudiantes únicos
+            $totalStudents = User::whereHas('role', fn($q) => $q->where('name', 'estudiante'))->count();
+            
+            // Cursos cerrados
+            $closedCourses = StudentCourse::distinct('subject_id', 'section_id', 'school_year_id')
+                ->whereIn('status', ['aprobado', 'reprobado', 'concluido', 'retirado'])
+                ->count('subject_id');
+            
+            // Cursos abiertos (tienen estudiantes en secciones pero no están cerrados)
+            $activeSections = Section::count();
+            $openCourses = $activeSections - $closedCourses;
+            
+            return response()->json([
+                'summary' => [
+                    'total_courses' => $totalCourses,
+                    'total_students' => $totalStudents,
+                    'closed_courses' => $closedCourses,
+                    'open_courses' => max(0, $openCourses)
+                ]
+            ]);
+        });
     }
 
     /**
@@ -92,56 +100,60 @@ class TeacherDashboardController extends Controller
      */
     private function getTeacherDashboard(User $teacher)
     {
-        // Obtener los horarios del profesor
-        $schedules = ClassSchedule::where('teacher_id', $teacher->id)
-            ->with(['subject', 'section', 'section.schoolYear'])
-            ->get();
+        $cacheKey = "teacher:dashboard:{$teacher->id}";
         
-        // Obtener combinaciones únicas de materia + sección
-        $courseCombinations = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id);
-        
-        // Total de cursos asignados
-        $totalCourses = $courseCombinations->count();
-        
-        // Estudiantes únicos en sus cursos
-        $studentIds = [];
-        foreach ($courseCombinations as $schedule) {
-            $studentsInSection = $schedule->section->students()->pluck('users.id');
-            $studentIds = array_merge($studentIds, $studentsInSection->toArray());
-        }
-        $totalStudents = count(array_unique($studentIds));
-        
-        // Cursos cerrados (donde existen registros en student_courses)
-        $closedCourses = 0;
-        $openCourses = 0;
-        
-        foreach ($courseCombinations as $schedule) {
-            $section = $schedule->section;
-            $schoolYearId = $section?->school_year_id;
+        return Cache::remember($cacheKey, self::DASHBOARD_TTL, function () use ($teacher) {
+            // Obtener los horarios del profesor
+            $schedules = ClassSchedule::where('teacher_id', $teacher->id)
+                ->with(['subject', 'section', 'section.schoolYear'])
+                ->get();
             
-            if (!$schoolYearId) continue;
+            // Obtener combinaciones únicas de materia + sección
+            $courseCombinations = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id);
             
-            $hasClosedRecord = StudentCourse::where('subject_id', $schedule->subject_id)
-                ->where('section_id', $section->id)
-                ->where('school_year_id', $schoolYearId)
-                ->whereIn('status', ['aprobado', 'reprobado', 'concluido', 'retirado'])
-                ->exists();
+            // Total de cursos asignados
+            $totalCourses = $courseCombinations->count();
             
-            if ($hasClosedRecord) {
-                $closedCourses++;
-            } else {
-                $openCourses++;
+            // Estudiantes únicos en sus cursos
+            $studentIds = [];
+            foreach ($courseCombinations as $schedule) {
+                $studentsInSection = $schedule->section->students()->pluck('users.id');
+                $studentIds = array_merge($studentIds, $studentsInSection->toArray());
             }
-        }
-        
-        return response()->json([
-            'summary' => [
-                'total_courses' => $totalCourses,
-                'total_students' => $totalStudents,
-                'closed_courses' => $closedCourses,
-                'open_courses' => $openCourses
-            ]
-        ]);
+            $totalStudents = count(array_unique($studentIds));
+            
+            // Cursos cerrados (donde existen registros en student_courses)
+            $closedCourses = 0;
+            $openCourses = 0;
+            
+            foreach ($courseCombinations as $schedule) {
+                $section = $schedule->section;
+                $schoolYearId = $section?->school_year_id;
+                
+                if (!$schoolYearId) continue;
+                
+                $hasClosedRecord = StudentCourse::where('subject_id', $schedule->subject_id)
+                    ->where('section_id', $section->id)
+                    ->where('school_year_id', $schoolYearId)
+                    ->whereIn('status', ['aprobado', 'reprobado', 'concluido', 'retirado'])
+                    ->exists();
+                
+                if ($hasClosedRecord) {
+                    $closedCourses++;
+                } else {
+                    $openCourses++;
+                }
+            }
+            
+            return response()->json([
+                'summary' => [
+                    'total_courses' => $totalCourses,
+                    'total_students' => $totalStudents,
+                    'closed_courses' => $closedCourses,
+                    'open_courses' => $openCourses
+                ]
+            ]);
+        });
     }
 
     /**
@@ -149,36 +161,40 @@ class TeacherDashboardController extends Controller
      */
     private function getAdminCourseStats()
     {
-        // Obtener todas las combinaciones de materia + sección
-        $schedules = ClassSchedule::with([
-            'subject',
-            'section',
-            'section.schoolYear'
-        ])->get();
+        $cacheKey = 'teacher:courses:stats:admin';
         
-        $courses = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id)->values();
-        
-        $stats = [];
-        
-        foreach ($courses as $schedule) {
-            $section = $schedule->section;
-            $schoolYearId = $section?->school_year_id;
+        return Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () {
+            // Obtener todas las combinaciones de materia + sección
+            $schedules = ClassSchedule::with([
+                'subject',
+                'section',
+                'section.schoolYear'
+            ])->get();
             
-            if (!$section || !$schoolYearId) continue;
+            $courses = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id)->values();
             
-            $stats[] = $this->calculateCourseStats(
-                $schedule->subject_id,
-                $section->id,
-                $schoolYearId,
-                $schedule->subject?->name,
-                $section->name,
-                $section->schoolYear?->name
-            );
-        }
-        
-        return response()->json([
-            'courses' => $stats
-        ]);
+            $stats = [];
+            
+            foreach ($courses as $schedule) {
+                $section = $schedule->section;
+                $schoolYearId = $section?->school_year_id;
+                
+                if (!$section || !$schoolYearId) continue;
+                
+                $stats[] = $this->calculateCourseStats(
+                    $schedule->subject_id,
+                    $section->id,
+                    $schoolYearId,
+                    $schedule->subject?->name,
+                    $section->name,
+                    $section->schoolYear?->name
+                );
+            }
+            
+            return response()->json([
+                'courses' => $stats
+            ]);
+        });
     }
 
     /**
@@ -186,46 +202,50 @@ class TeacherDashboardController extends Controller
      */
     private function getTeacherCourseStats(User $teacher)
     {
-        // Solo los cursos donde el profesor es teacher
-        $schedules = ClassSchedule::where('teacher_id', $teacher->id)
-            ->with([
-                'subject',
-                'section',
-                'section.schoolYear'
-            ])
-            ->get();
+        $cacheKey = "teacher:courses:stats:{$teacher->id}";
         
-        $courses = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id)->values();
-        
-        $stats = [];
-        
-        foreach ($courses as $schedule) {
-            $section = $schedule->section;
-            $schoolYearId = $section?->school_year_id;
+        return Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () use ($teacher) {
+            // Solo los cursos donde el profesor es teacher
+            $schedules = ClassSchedule::where('teacher_id', $teacher->id)
+                ->with([
+                    'subject',
+                    'section',
+                    'section.schoolYear'
+                ])
+                ->get();
             
-            if (!$section || !$schoolYearId) continue;
+            $courses = $schedules->unique(fn($s) => $s->subject_id . '-' . $s->section_id)->values();
             
-            // Verificar que el profesor es el teacher de esta materia en esta sección
-            $isTeacherOfCourse = ClassSchedule::where('subject_id', $schedule->subject_id)
-                ->where('section_id', $section->id)
-                ->where('teacher_id', $teacher->id)
-                ->exists();
+            $stats = [];
             
-            if (!$isTeacherOfCourse) continue;
+            foreach ($courses as $schedule) {
+                $section = $schedule->section;
+                $schoolYearId = $section?->school_year_id;
+                
+                if (!$section || !$schoolYearId) continue;
+                
+                // Verificar que el profesor es el teacher de esta materia en esta sección
+                $isTeacherOfCourse = ClassSchedule::where('subject_id', $schedule->subject_id)
+                    ->where('section_id', $section->id)
+                    ->where('teacher_id', $teacher->id)
+                    ->exists();
+                
+                if (!$isTeacherOfCourse) continue;
+                
+                $stats[] = $this->calculateCourseStats(
+                    $schedule->subject_id,
+                    $section->id,
+                    $schoolYearId,
+                    $schedule->subject?->name,
+                    $section->name,
+                    $section->schoolYear?->name
+                );
+            }
             
-            $stats[] = $this->calculateCourseStats(
-                $schedule->subject_id,
-                $section->id,
-                $schoolYearId,
-                $schedule->subject?->name,
-                $section->name,
-                $section->schoolYear?->name
-            );
-        }
-        
-        return response()->json([
-            'courses' => $stats
-        ]);
+            return response()->json([
+                'courses' => $stats
+            ]);
+        });
     }
 
     /**

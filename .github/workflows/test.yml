@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sistema_academico_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammaths/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pgsql, pdo_pgsql
+          coverage: none
+
+      - name: Install dependencies
+        working-directory: Backend/sistema-academico
+        run: |
+          composer install --prefer-dist --no-interaction
+
+      - name: Create environment file
+        working-directory: Backend/sistema-academico
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Configure database
+        working-directory: Backend/sistema-academico
+        env:
+          DB_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: |
+          php -r "
+            \$env = file_get_contents('.env');
+            \$env = str_replace('DB_HOST=127.0.0.1', 'DB_HOST=127.0.0.1', \$env);
+            \$env = str_replace('DB_PORT=5432', 'DB_PORT=' . getenv('DB_PORT'), \$env);
+            \$env = str_replace('DB_DATABASE=sistema_academico', 'DB_DATABASE=sistema_academico_test', \$env);
+            \$env = str_replace('DB_USERNAME=postgres', 'DB_USERNAME=postgres', \$env);
+            \$env = str_replace('DB_PASSWORD=', 'DB_PASSWORD=postgres', \$env);
+            file_put_contents('.env', \$env);
+          "
+
+      - name: Run migrations
+        working-directory: Backend/sistema-academico
+        run: php artisan migrate --seed
+
+      - name: Run tests
+        working-directory: Backend/sistema-academico
+        run: vendor/bin/pest
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: Backend/sistema-academico/storage/logs/

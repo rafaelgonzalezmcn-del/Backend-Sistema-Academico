@@ -1,0 +1,431 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sistema Académico API",
+    "description": "API REST del Sistema de Gestión Académica. Endpoints para autenticación, administración, gestión de usuarios, materias, grados, secciones, horarios, módulos, tareas, parciales, entregas y más.\n\n## Autenticación\n\nLa API utiliza Laravel Sanctum para autenticación. Para acceder a endpoints protegidos:\n\n1. Envíe credenciales al endpoint POST /api/login\n2. Reciba un token JWT en la respuesta\n3. Incluya el token en el header: Authorization: Bearer <token>\n\n## Roles\n\n- Admin: Acceso completo a todas las funcionalidades\n- Profesor: Gestión de materias, módulos, tareas, parciales y calificaciones\n- Estudiante: Visualización de materias, tareas y entregas\n\n## Códigos de Respuesta\n\n| Código | Descripción |\n|--------|-------------|\n| 200 | Éxito |\n| 201 | Creado exitosamente |\n| 400 | Solicitud incorrecta |\n| 401 | No autenticado |\n| 403 | Sin permisos |\n| 404 | No encontrado |\n| 409 | Conflicto |\n| 422 | Error de validación |\n| 429 | Demasiadas solicitudes |\n| 500 | Error del servidor",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Desarrollo",
+      "email": "admin@academico.local"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Servidor de Desarrollo"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "first_name": {"type": "string"},
+          "last_name": {"type": "string"},
+          "email": {"type": "string", "format": "email"},
+          "identification_number": {"type": "string"},
+          "phone": {"type": "string"},
+          "role": {"type": "object"},
+          "activo": {"type": "boolean"},
+          "section": {"type": "object"}
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": {"type": "string", "format": "email", "example": "admin@admin.com"},
+          "password": {"type": "string", "example": "admin123"}
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {"type": "string", "example": "eyJ0eXAiOiJKV1QiLCJhbGc..."},
+          "token_type": {"type": "string", "example": "Bearer"},
+          "user": {"type": "object"}
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "message": {"type": "string"},
+          "errors": {"type": "object"}
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/login": {
+      "post": {
+        "tags": ["Autenticacion"],
+        "summary": "Iniciar sesion",
+        "description": "Autentica un usuario y retorna un token de acceso",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/LoginRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login exitoso",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/LoginResponse"}
+              }
+            }
+          },
+          "401": {"description": "Credenciales inválidas"},
+          "422": {"description": "Error de validación"},
+          "429": {"description": "Demasiados intentos"}
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "tags": ["Autenticacion"],
+        "summary": "Cerrar sesión",
+        "description": "Invalida el token de acceso actual",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Logout exitoso"},
+          "401": {"description": "No autenticado"}
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": ["Usuario"],
+        "summary": "Obtener usuario actual",
+        "description": "Retorna la información del usuario autenticado",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Datos del usuario"},
+          "401": {"description": "No autenticado"}
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": ["Usuarios"],
+        "summary": "Listar usuarios",
+        "description": "Retorna lista paginada de usuarios. Solo accesible para admin.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "page", "in": "query", "schema": {"type": "integer"}},
+          {"name": "per_page", "in": "query", "schema": {"type": "integer"}},
+          {"name": "role", "in": "query", "schema": {"type": "string"}},
+          {"name": "count_only", "in": "query", "schema": {"type": "boolean"}}
+        ],
+        "responses": {
+          "200": {"description": "Lista de usuarios"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      },
+      "post": {
+        "tags": ["Usuarios"],
+        "summary": "Crear usuario",
+        "description": "Crea un nuevo usuario. Solo admin.",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["first_name", "last_name", "email", "password", "role_id"],
+                "properties": {
+                  "first_name": {"type": "string"},
+                  "last_name": {"type": "string"},
+                  "email": {"type": "string"},
+                  "password": {"type": "string"},
+                  "role_id": {"type": "integer"},
+                  "identification_number": {"type": "string"},
+                  "phone": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Usuario creado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"},
+          "422": {"description": "Error de validación"}
+        }
+      }
+    },
+    "/api/users/{user}": {
+      "get": {
+        "tags": ["Usuarios"],
+        "summary": "Ver usuario",
+        "description": "Retorna un usuario específico",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "user", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Datos del usuario"},
+          "401": {"description": "No autenticado"},
+          "404": {"description": "Usuario no encontrado"}
+        }
+      },
+      "put": {
+        "tags": ["Usuarios"],
+        "summary": "Actualizar usuario",
+        "description": "Actualiza un usuario. Solo admin.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "user", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Usuario actualizado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"},
+          "422": {"description": "Error de validación"}
+        }
+      },
+      "delete": {
+        "tags": ["Usuarios"],
+        "summary": "Eliminar usuario",
+        "description": "Elimina un usuario. Solo admin.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "user", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Usuario eliminado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/roles": {
+      "get": {
+        "tags": ["Roles"],
+        "summary": "Listar roles",
+        "description": "Retorna todos los roles disponibles",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Lista de roles"}
+        }
+      }
+    },
+    "/api/school-years": {
+      "get": {
+        "tags": ["AnosLectivos"],
+        "summary": "Listar años lectivos",
+        "responses": {
+          "200": {"description": "Lista de años lectivos"}
+        }
+      },
+      "post": {
+        "tags": ["AnosLectivos"],
+        "summary": "Crear año lectivo",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "start_date", "end_date"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "start_date": {"type": "string", "format": "date"},
+                  "end_date": {"type": "string", "format": "date"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Año lectivo creado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/grades": {
+      "get": {
+        "tags": ["Grados"],
+        "summary": "Listar grados",
+        "responses": {
+          "200": {"description": "Lista de grados"}
+        }
+      },
+      "post": {
+        "tags": ["Grados"],
+        "summary": "Crear grado",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "school_year_id"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "school_year_id": {"type": "integer"},
+                  "order": {"type": "integer"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Grado creado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/sections": {
+      "get": {
+        "tags": ["Secciones"],
+        "summary": "Listar secciones",
+        "responses": {
+          "200": {"description": "Lista de secciones"}
+        }
+      },
+      "post": {
+        "tags": ["Secciones"],
+        "summary": "Crear sección",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "grade_id"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "grade_id": {"type": "integer"},
+                  "max_capacity": {"type": "integer"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Sección creada"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/subjects": {
+      "get": {
+        "tags": ["Materias"],
+        "summary": "Listar materias",
+        "responses": {
+          "200": {"description": "Lista de materias"}
+        }
+      },
+      "post": {
+        "tags": ["Materias"],
+        "summary": "Crear materia",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "grade_id", "profesor_id"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "grade_id": {"type": "integer"},
+                  "profesor_id": {"type": "integer"},
+                  "description": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Materia creada"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/class-schedules": {
+      "get": {
+        "tags": ["Horarios"],
+        "summary": "Listar horarios",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Lista de horarios"}
+        }
+      },
+      "post": {
+        "tags": ["Horarios"],
+        "summary": "Crear horario",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["subject_id", "section_id", "day_of_week", "start_time", "end_time"],
+                "properties": {
+                  "subject_id": {"type": "integer"},
+                  "section_id": {"type": "integer"},
+                  "day_of_week": {"type": "integer"},
+                  "start_time": {"type": "string"},
+                  "end_time": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Horario creado"},
+          "401": {"description": "No autenticado"},
+          "403": {"description": "Sin permisos"}
+        }
+      }
+    },
+    "/api/teachers": {
+      "get": {
+        "tags": ["Profesores"],
+        "summary": "Listar profesores",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Lista de profesores"}
+        }
+      }
+    },
+    "/api/activity-logs": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Listar logs de actividad",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Lista de logs"}
+        }
+      }
+    }
+  }
+}

@@ -113,7 +113,12 @@ class ModuloController extends Controller
     public function update(UpdateModuloRequest $request, Modulo $modulo)
     {
         try {
-            // Authorization verificada por route middleware (role:profesor)
+            // F1: Verificar ownership - profesor debe enseñar esta materia
+            $user = request()->user();
+            if (!$this->moduloService->canAccessMateria($user, $modulo->materia_id)) {
+                return response()->json(['message' => 'No tienes acceso a este módulo'], 403);
+            }
+
             $validated = $request->validated();
 
             $modulo = $this->moduloService->update($modulo, $validated);
@@ -130,13 +135,19 @@ class ModuloController extends Controller
     }
 
     /**
-     * Eliminar módulo (F3-T2)
+     * Eliminar módulo
      * DELETE /modulos/{modulo}
      */
     public function destroy(Modulo $modulo)
     {
         try {
-            // F3-T2: Verificar si tiene tareas asociadas antes de eliminar
+            // F1: Verificar ownership - profesor debe enseñar esta materia
+            $user = request()->user();
+            if (!$this->moduloService->canAccessMateria($user, $modulo->materia_id)) {
+                return response()->json(['message' => 'No tienes acceso a este módulo'], 403);
+            }
+
+            // Verificar si tiene tareas asociadas antes de eliminar
             $tieneTareas = DB::table('tareas')
                 ->where('modulo_id', $modulo->id)
                 ->exists();
@@ -147,7 +158,6 @@ class ModuloController extends Controller
                 ], 409);
             }
 
-            // Authorization verificada por route middleware (role:profesor)
             $this->moduloService->delete($modulo);
 
             return response()->json(['message' => 'Módulo eliminado correctamente']);

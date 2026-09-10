@@ -82,11 +82,17 @@ class GradeService
     }
 
     /**
-     * Eliminar grado
+     * Eliminar grado (hard delete - eliminación permanente)
      */
     public function delete(Grade $grade): void
     {
-        $grade->delete();
+        // Verificar si hay secciones asociadas
+        if ($grade->sections()->count() > 0) {
+            throw new \Exception('No se puede eliminar un grado que tiene secciones asociadas');
+        }
+        
+        // Eliminación permanente (hard delete)
+        $grade->forceDelete();
 
         $this->logActivity($this->logEvent('grade', 'deleted'), $grade, null, true);
     }

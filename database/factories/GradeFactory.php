@@ -22,18 +22,8 @@ class GradeFactory extends Factory
     {
         return [
             'name' => fake()->randomElement(['1er Grado', '2do Grado', '3er Grado', '4to Grado', '5to Grado', '6to Grado']),
-            'school_year_id' => SchoolYear::factory(),
+            'grade_order' => fake()->numberBetween(1, 6),
         ];
-    }
-
-    /**
-     * Crea un grado con un año lectivo específico.
-     */
-    public function forSchoolYear(SchoolYear $schoolYear): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'school_year_id' => $schoolYear->id,
-        ]);
     }
 
     /**

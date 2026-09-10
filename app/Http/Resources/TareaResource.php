@@ -14,6 +14,27 @@ class TareaResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $user = $request->user();
+        $esEstudiante = $user?->role?->name === 'estudiante';
+        
+        // Si es estudiante, buscar su entrega
+        $miEntrega = null;
+        if ($esEstudiante) {
+            $entrega = \App\Models\Entrega::where('tarea_id', $this->id)
+                ->where('estudiante_id', $user->id)
+                ->first();
+            if ($entrega) {
+                $miEntrega = [
+                    'id' => $entrega->id,
+                    'nota' => $entrega->nota,
+                    'observaciones' => $entrega->observaciones,
+                    'fecha_entrega' => $entrega->fecha_entrega?->toIso8601String(),
+                    'ha_entregado' => true,
+                    'archivo' => $entrega->archivo,
+                ];
+            }
+        }
+        
         return [
             'id' => $this->id,
             'titulo' => $this->titulo,
@@ -29,6 +50,10 @@ class TareaResource extends JsonResource
             'estado' => $this->estado ?? $this->getEstado(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+            
+            // Entrega del estudiante (si aplica)
+            'ha_entregado' => $miEntrega ? true : false,
+            'mi_entrega' => $miEntrega,
             
             // Relación con módulo
             'modulo' => $this->whenLoaded('modulo', function () {

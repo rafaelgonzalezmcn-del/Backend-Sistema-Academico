@@ -147,11 +147,17 @@ class SubjectService
 
     /**
      * Obtener participantes de una materia
+     * Soporta paginación: ?page=1&per_page=50
+     * Sin parámetros: retorna lista simple (backward compatible)
      */
     public function getParticipantes(Subject $subject, User $user): array
     {
         $roleName = $user->role?->name;
         $participantes = [];
+        
+        // Verificar si se solicita paginación
+        $page = request()->query('page');
+        $perPage = request()->query('per_page', 50);
         
         if ($roleName === 'profesor') {
             // El profesor solo ve sus estudiantes de la sección específica
@@ -171,29 +177,73 @@ class SubjectService
                     ->toArray();
             }
             
-            $estudiantes = User::whereIn('section_id', $mySectionIds)
+            $query = User::whereIn('section_id', $mySectionIds)
                 ->whereHas('role', fn($q) => $q->where('name', 'estudiante'))
-                ->where('activo', true)
-                ->get();
+                ->where('activo', true);
             
-            foreach ($estudiantes as $estudiante) {
+            // Construir participantes para lista simple
+            $buildParticipantesList = function ($users) use ($user) {
+                $list = [];
+                foreach ($users as $estudiante) {
+                    $list[] = [
+                        'id' => $estudiante->id,
+                        'nombre' => $estudiante->first_name . ' ' . $estudiante->last_name,
+                        'email' => $estudiante->email,
+                        'rol' => 'estudiante',
+                        'has_selfie' => !empty($estudiante->selfie)
+                    ];
+                }
+                return $list;
+            };
+            
+            if ($page) {
+                // Paginación solicitada
+                $estudiantes = $query->paginate($perPage, ['*'], 'page', $page);
+                
+                foreach ($estudiantes as $estudiante) {
+                    $participantes[] = [
+                        'id' => $estudiante->id,
+                        'nombre' => $estudiante->first_name . ' ' . $estudiante->last_name,
+                        'email' => $estudiante->email,
+                        'rol' => 'estudiante',
+                        'has_selfie' => !empty($estudiante->selfie)
+                    ];
+                }
+                
+                // Agregar al profesor mismo
                 $participantes[] = [
-                    'id' => $estudiante->id,
-                    'nombre' => $estudiante->first_name . ' ' . $estudiante->last_name,
-                    'email' => $estudiante->email,
-                    'rol' => 'estudiante',
-                    'has_selfie' => !empty($estudiante->selfie)
+                    'id' => $user->id,
+                    'nombre' => $user->first_name . ' ' . $user->last_name,
+                    'email' => $user->email,
+                    'rol' => 'profesor',
+                    'has_selfie' => !empty($user->selfie)
                 ];
+                
+                return [
+                    'data' => $participantes,
+                    'meta' => [
+                        'current_page' => $estudiantes->currentPage(),
+                        'last_page' => $estudiantes->lastPage(),
+                        'total' => $estudiantes->total(),
+                        'per_page' => $estudiantes->perPage()
+                    ]
+                ];
+            } else {
+                // Sin paginación: comportamiento original
+                $estudiantes = $query->get();
+                $participantes = $buildParticipantesList($estudiantes);
+                
+                // Agregar al profesor mismo
+                $participantes[] = [
+                    'id' => $user->id,
+                    'nombre' => $user->first_name . ' ' . $user->last_name,
+                    'email' => $user->email,
+                    'rol' => 'profesor',
+                    'has_selfie' => !empty($user->selfie)
+                ];
+                
+                return $participantes;
             }
-            
-            // Agregar al profesor mismo
-            $participantes[] = [
-                'id' => $user->id,
-                'nombre' => $user->first_name . ' ' . $user->last_name,
-                'email' => $user->email,
-                'rol' => 'profesor',
-                'has_selfie' => !empty($user->selfie)
-            ];
             
         } elseif ($roleName === 'estudiante') {
             $sectionId = $user->section_id;

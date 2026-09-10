@@ -32,6 +32,17 @@ class SectionService
             $query->where('school_year_id', $filters['school_year_id']);
         }
 
+        // Si per_page es -1, obtener todos los resultados sin paginación
+        if ($perPage === -1) {
+            $sections = $query->get();
+            return new \Illuminate\Pagination\LengthAwarePaginator(
+                $sections,
+                $sections->count(),
+                $sections->count(),
+                1
+            );
+        }
+
         return $query->paginate($perPage);
     }
 

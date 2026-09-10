@@ -37,7 +37,10 @@ Route::middleware(['throttle:10,1'])->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-Route::post('/logout', [AuthController::class, 'logout']);
+// Logout - menor throttle (5/min) para evitar abuso de sesiones
+Route::middleware(['throttle:5,1'])->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -184,68 +187,87 @@ Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->group(functi
     Route::apiResource('users', UserController::class)->except(['show']);
     Route::patch('/users/{user}/assign-section', [UserController::class, 'assignSection']);
 
-    // Operaciones masivas de usuarios (solo admin)
+    // Conteo de usuarios (solo admin)
+    Route::get('/users/count', [UserController::class, 'count']);
+});
+
+// Operaciones masivas de usuarios (solo admin) - más restrictivo para prevenir abuso
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::patch('/admin/users/batch-assign-section', [UserController::class, 'batchAssignSection']);
     Route::patch('/admin/users/batch-deactivate', [UserController::class, 'batchDeactivate']);
     Route::post('/admin/users/batch-preview', [UserController::class, 'batchPreview']);
+});
 
-    // Conteo de usuarios (solo admin)
-    Route::get('/users/count', [UserController::class, 'count']);
-
-    // Validación de cédula en tiempo real (solo admin)
+// Validaciones en tiempo real (solo admin) - más restrictivo
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::get('/users/check-identification', [UserController::class, 'checkIdentification']);
-
-    // Validación de email en tiempo real (solo admin)
     Route::get('/users/check-email', [UserController::class, 'checkEmail']);
-
-    // Endpoint unificado de validación (solo admin)
     Route::get('/users/check-availability', [UserController::class, 'checkAvailability']);
+});
 
-    // Historial académico (solo admin)
+// Historial académico (solo admin)
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->group(function () {
     Route::get('/admin/students/{student}/academic-history', [AdminAcademicHistoryController::class, 'studentHistory']);
     Route::get('/admin/sections/{section}/academic-summary', [AdminAcademicHistoryController::class, 'sectionSummary']);
+});
 
-    // Dashboard de métricas (solo admin)
+// Dashboard de métricas (solo admin) - menos restrictivo ya que está cacheado
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:120,1'])->group(function () {
     Route::get('/admin/dashboard/stats', [AdminDashboardController::class, 'stats']);
+});
 
-    // Matrícula (solo admin)
+// Matrícula (solo admin) - operaciones críticas
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::post('/admin/enrollments', [\App\Http\Controllers\EnrollmentController::class, 'enroll']);
     Route::get('/admin/enrollments/available-sections', [\App\Http\Controllers\EnrollmentController::class, 'availableSections']);
     Route::get('/admin/enrollments/check-student/{student}', [\App\Http\Controllers\EnrollmentController::class, 'checkStudent']);
+});
 
-    // Elegibilidad de promoción (solo admin)
+// Elegibilidad y promoción (solo admin) - operaciones críticas con límites más altos para batch
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->group(function () {
     Route::get('/admin/students/{student}/promotion-eligibility', [PromotionController::class, 'checkEligibility']);
     Route::post('/admin/promotions/check-batch-eligibility', [PromotionController::class, 'checkBatchEligibility']);
     Route::post('/admin/students/{student}/promote', [PromotionController::class, 'promoteStudent']);
     Route::post('/admin/sections/{section}/promote-all', [PromotionController::class, 'promoteSection']);
+});
 
-    // Años lectivos
+// Años lectivos
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::post('/school-years', [SchoolYearController::class, 'store']);
     Route::put('/school-years/{schoolYear}', [SchoolYearController::class, 'update']);
     Route::delete('/school-years/{schoolYear}', [SchoolYearController::class, 'destroy']);
     Route::put('/school-years/{id}/activate', [SchoolYearController::class, 'activate']);
+});
 
-    // Grados
+// Grados
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::post('/grades', [GradeController::class, 'store']);
     Route::put('/grades/{grade}', [GradeController::class, 'update']);
     Route::delete('/grades/{grade}', [GradeController::class, 'destroy']);
+});
 
-    // Secciones
+// Secciones
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::post('/sections', [SectionController::class, 'store']);
     Route::put('/sections/{section}', [SectionController::class, 'update']);
     Route::delete('/sections/{section}', [SectionController::class, 'destroy']);
+});
 
-    // Materias
+// Materias
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::post('/subjects', [SubjectController::class, 'store']);
     Route::put('/subjects/{subject}', [SubjectController::class, 'update']);
     Route::delete('/subjects/{subject}', [SubjectController::class, 'destroy']);
+});
 
-    // Horarios (CRUD completo solo admin)
+// Horarios (CRUD completo solo admin)
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:30,1'])->group(function () {
     Route::apiResource('class-schedules', ClassScheduleController::class);
-    
-    // Activity Log
+});
+
+// Activity Log
+Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->group(function () {
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
-    // Conteo de activity logs (solo admin)
     Route::get('/activity-logs/count', [ActivityLogController::class, 'count']);
 });
 
@@ -283,8 +305,8 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function (
     Route::post('/modulos/{moduloId}/parciales/crear', [ParcialController::class, 'forzarCreacion']);
 });
 
-// Rutas de modificación (solo profesor)
-Route::middleware(['auth:sanctum', 'active', 'role:profesor', 'throttle:60,1'])->group(function () {
+// Rutas de modificación (profesor y admin)
+Route::middleware(['auth:sanctum', 'active', 'role:profesor,admin', 'throttle:60,1'])->group(function () {
     // CRUD de módulos
     Route::post('/modulos', [ModuloController::class, 'store']);
     Route::put('/modulos/{modulo}', [ModuloController::class, 'update']);

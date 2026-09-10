@@ -23,7 +23,7 @@ describe('CRUD Subjects - Admin', function () {
         $response = $this->getJson('/api/subjects');
 
         $response->assertStatus(200);
-        $response->assertJsonCount(3);
+        $response->assertJsonCount(3, 'data');
     });
 
     test('admin puede crear materia', function () {
@@ -135,7 +135,7 @@ describe('Validaciones Subject', function () {
         $response = $this->getJson('/api/subjects');
 
         $response->assertStatus(200);
-        $response->assertJsonCount(3);
+        $response->assertJsonCount(3, 'data');
     });
 
     test('profesor puede listar materias', function () {
@@ -149,6 +149,6 @@ describe('Validaciones Subject', function () {
         $response = $this->getJson('/api/subjects');
 
         $response->assertStatus(200);
-        $response->assertJsonCount(3);
+        $response->assertJsonCount(3, 'data');
     });
 });

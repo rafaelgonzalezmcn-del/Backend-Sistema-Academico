@@ -26,6 +26,7 @@ class SchoolYearFactory extends Factory
             'start_date' => now()->startOfYear(),
             'end_date' => now()->endOfYear(),
             'active' => false,
+            'grade_order' => fake()->randomElement([1, 2, 3, null]),
         ];
     }
 

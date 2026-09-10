@@ -22,7 +22,6 @@ class ClassScheduleFactory extends Factory
             'teacher_id' => User::factory()->profesor(),
             'subject_id' => Subject::factory(),
             'section_id' => Section::factory(),
-            'school_year_id' => SchoolYear::factory(),
             'day' => fake()->randomElement(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']),
             'start_time' => fake()->time('H:i'),
             'end_time' => fake()->time('H:i'),
@@ -67,17 +66,6 @@ class ClassScheduleFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'section_id' => $section->id,
-            'school_year_id' => $section->school_year_id,
-        ]);
-    }
-
-    /**
-     * Crea un horario para un año lectivo específico.
-     */
-    public function forSchoolYear(SchoolYear $schoolYear): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'school_year_id' => $schoolYear->id,
         ]);
     }
 }

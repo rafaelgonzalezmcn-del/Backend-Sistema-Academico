@@ -14,6 +14,12 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @OA\Tag(
+ *      name="Usuarios",
+ *      description="Endpoints de gestión de usuarios (solo Admin)"
+ * )
+ */
 class UserController extends Controller
 {
     public function __construct(
@@ -21,8 +27,59 @@ class UserController extends Controller
     ) {}
 
     /**
-     * GET /users
-     * Listar usuarios
+     * @OA\Get(
+     *      path="/api/users",
+     *      tags={"Usuarios"},
+     *      summary="Listar usuarios",
+     *      description="Retorna lista paginada de usuarios. Solo accesible para admin.",
+     *      operationId="indexUsers",
+     *      security={{"bearerAuth": {}}},
+     *      @OA\Parameter(
+     *          name="page",
+     *          in="query",
+     *          description="Número de página",
+     *          @OA\Schema(type="integer", default=1)
+     *      ),
+     *      @OA\Parameter(
+     *          name="per_page",
+     *          in="query",
+     *          description="Usuarios por página",
+     *          @OA\Schema(type="integer", default=15)
+     *      ),
+     *      @OA\Parameter(
+     *          name="role",
+     *          in="query",
+     *          description="Filtrar por rol (admin, profesor, estudiante)",
+     *          @OA\Schema(type="string")
+     *      ),
+     *      @OA\Parameter(
+     *          name="count_only",
+     *          in="query",
+     *          description="Retornar solo conteo",
+     *          @OA\Schema(type="boolean", default=false)
+     *      ),
+     *      @OA\Response(
+     *          response=200,
+     *          description="Lista de usuarios",
+     *          @OA\JsonContent(
+     *              @OA\Property(property="data", type="array", @OA\Items(
+     *                  @OA\Property(property="id", type="integer"),
+     *                  @OA\Property(property="first_name", type="string"),
+     *                  @OA\Property(property="last_name", type="string"),
+     *                  @OA\Property(property="email", type="string"),
+     *                  @OA\Property(property="role", type="object"),
+     *                  @OA\Property(property="activo", type="boolean")
+     *              )),
+     *              @OA\Property(property="meta", type="object",
+     *                  @OA\Property(property="current_page", type="integer"),
+     *                  @OA\Property(property="total", type="integer"),
+     *                  @OA\Property(property="per_page", type="integer")
+     *              )
+     *          )
+     *      ),
+     *      @OA\Response(response=401, description="No autenticado"),
+     *      @OA\Response(response=403, description="Sin permisos")
+     * )
      */
     public function index(Request $request)
     {
@@ -121,7 +178,21 @@ class UserController extends Controller
             }
         }
 
-        $users = $query->paginate(15);
+        // Usar paginación por defecto (15 por página)
+        // Solo obtener todos SIN paginación cuando se especifica per_page=-1
+        $perPage = $request->query('per_page', 15);
+        if ($perPage == -1) {
+            $users = $query->get();
+            // Envolver en paginator sintético para compatibilidad
+            $users = new \Illuminate\Pagination\LengthAwarePaginator(
+                $users,
+                $users->count(),
+                $users->count(),
+                1
+            );
+        } else {
+            $users = $query->paginate($perPage);
+        }
         
         return response()->json([
             'data' => UserResource::collection($users)->resolve(),
@@ -395,6 +466,17 @@ class UserController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            // Verificar si es la excepción especial con datos de la sección actual
+            $message = $e->getMessage();
+            $data = @json_decode($message, true);
+            
+            if ($data && isset($data['current_section'])) {
+                return response()->json([
+                    'message' => $data['message'],
+                    'current_section' => $data['current_section']
+                ], 409);
+            }
+            
             return response()->json(['message' => $e->getMessage()], 409);
         }
     }
@@ -783,15 +865,40 @@ class UserController extends Controller
     /**
      * GET /users/{user}/selfie
      * Obtener la selfie de cualquier usuario (para display en listas)
+     * FASE 2: Verificación de acceso - solo usuarios con relación académica legítima
      */
     public function getUserSelfie(Request $request, User $user)
     {
-        // Verificar que el usuario autenticado tiene acceso
         $authUser = $request->user();
         
-        // Permite ver si: es admin, o es profesor del usuario (estudiante), o el mismo usuario
-        // Por simplicidad, permitimos a cualquier usuario autenticado ver las selfies
-        // (para mostrar en listas de participantes)
+        // FASE 2: Verificar acceso antes de permitir ver la selfie
+        // Admin tiene acceso total
+        if ($authUser->isAdmin()) {
+            $hasAccess = true;
+        }
+        // Mismo usuario puede ver su propia selfie
+        elseif ($authUser->id === $user->id) {
+            $hasAccess = true;
+        }
+        // Profesor puede ver selfie de estudiantes de sus secciones
+        elseif ($authUser->isTeacher() && $user->section_id) {
+            $hasAccess = \App\Models\ClassSchedule::where('teacher_id', $authUser->id)
+                ->where('section_id', $user->section_id)
+                ->exists();
+        }
+        // Estudiante puede ver selfie de compañeros de su sección
+        elseif ($authUser->isStudent() && $user->section_id) {
+            $hasAccess = $authUser->section_id === $user->section_id;
+        }
+        else {
+            $hasAccess = false;
+        }
+        
+        if (!$hasAccess) {
+            return response()->json([
+                'message' => 'No tienes acceso a la selfie de este usuario'
+            ], 403);
+        }
         
         if (!$user->selfie || !$user->selfie_mime) {
             return response()->json([

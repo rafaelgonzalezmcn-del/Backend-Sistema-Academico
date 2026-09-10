@@ -12,10 +12,13 @@ use App\Http\Resources\SubjectResource;
 use App\Services\SubjectService;
 use App\Services\CourseClosureService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SubjectController extends Controller
 {
+    const CACHE_TTL = 600; // 10 minutos
+
     public function __construct(
         private SubjectService $subjectService,
         private CourseClosureService $courseClosureService
@@ -27,13 +30,17 @@ class SubjectController extends Controller
      */
     public function index(Request $request)
     {
-        $subjects = Subject::all();
-        
         if ($request->has('count_only')) {
             return response()->json([
-                'total' => $subjects->count()
+                'total' => Subject::count()
             ]);
         }
+
+        $cacheKey = 'cache:subjects:all';
+        
+        $subjects = Cache::remember($cacheKey, self::CACHE_TTL, function () {
+            return Subject::all();
+        });
         
         $subjectsData = SubjectResource::collection($subjects)->resolve();
         
@@ -388,26 +395,34 @@ class SubjectController extends Controller
      * GET /students/{student}/courses
      * Obtener historial académico del estudiante
      * 
-     * Control de visibilidad según quién consulta:
-     * - Profesor: ve todo (incluye final_grade)
-     * - Estudiante viendo su propio perfil: ve todo
-     * - Estudiante viendo a otro estudiante: solo info básica (sin nota)
+     * Control de acceso (FASE 1):
+     * - Admin: acceso total
+     * - Estudiante: solo su propio historial
+     * - Profesor: solo estudiantes de sus secciones
      */
     public function getStudentCourses(User $student, Request $request)
     {
         $currentUser = $request->user();
         
-        // Determinar si el usuario actual puede ver las notas
+        // F1: Control de acceso - denied by default
         $canViewGrades = false;
         
         if ($currentUser->isAdmin()) {
+            // Admin tiene acceso total
             $canViewGrades = true;
         } elseif ($currentUser->id === $student->id) {
-            // Estudiante viendo su propio perfil
+            // Estudiante viendo su propio historial
             $canViewGrades = true;
         } elseif ($currentUser->isTeacher()) {
-            // Profesor - verificar si es profesor de alguna materia del estudiante
-            $canViewGrades = true; // Por ahora, cualquier profesor puede ver notas
+            // F1: Verificar que el profesor enseña a este estudiante
+            // El estudiante debe estar en una sección donde el profesor enseña
+            $teachesThisStudent = \App\Models\ClassSchedule::where('teacher_id', $currentUser->id)
+                ->where('section_id', $student->section_id)
+                ->exists();
+            
+            if ($teachesThisStudent) {
+                $canViewGrades = true;
+            }
         }
 
         $courses = $this->courseClosureService->getStudentHistory($student->id);

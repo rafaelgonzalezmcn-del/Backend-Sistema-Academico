@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'Sistema Académico'),
 
     /*
     |--------------------------------------------------------------------------
@@ -37,6 +37,7 @@ return [
     | stack traces will be shown on every error that occurs within your
     | application. If disabled, a simple generic error page is shown.
     |
+    | WARNING: This should be 'false' in production!
     */
 
     'debug' => (bool) env('APP_DEBUG', false),
@@ -56,6 +57,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Asset URL
+    |--------------------------------------------------------------------------
+    |
+    | This value is the URL to your assets. This is used in console commands
+    | and should be set to your production URL.
+    |
+    */
+
+    'asset_url' => env('ASSET_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
@@ -65,7 +78,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'America/Guayaquil'),
 
     /*
     |--------------------------------------------------------------------------

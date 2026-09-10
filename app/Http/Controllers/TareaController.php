@@ -49,6 +49,8 @@ class TareaController extends Controller
         $modulo = Modulo::findOrFail($request->validated('modulo_id'));
         $this->authorize('view', $modulo);
 
+        \Illuminate\Support\Facades\Log::info('TareaController store: Request recibido', $request->all());
+
         $tarea = $this->tareaService->create($request->validated(), $request);
 
         return response()->json([
