@@ -14,7 +14,7 @@ class SectionService
      */
     public function index(array $filters): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $perPage = isset($filters['per_page']) ? (int) $filters['per_page'] : 15;
+        $perPage = \App\Support\Paginacion::porPagina($filters['per_page'] ?? null);
 
         $query = Section::with(['grade', 'schoolYear'])
             // Contar estudiantes activos de forma eficiente (single query)
@@ -30,17 +30,6 @@ class SectionService
 
         if (!empty($filters['school_year_id'])) {
             $query->where('school_year_id', $filters['school_year_id']);
-        }
-
-        // Si per_page es -1, obtener todos los resultados sin paginación
-        if ($perPage === -1) {
-            $sections = $query->get();
-            return new \Illuminate\Pagination\LengthAwarePaginator(
-                $sections,
-                $sections->count(),
-                $sections->count(),
-                1
-            );
         }
 
         return $query->paginate($perPage);

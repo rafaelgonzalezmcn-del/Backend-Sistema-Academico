@@ -176,21 +176,9 @@ class UserController extends Controller
             }
         }
 
-        // Usar paginación por defecto (15 por página)
-        // Solo obtener todos SIN paginación cuando se especifica per_page=-1
-        $perPage = $request->query('per_page', 15);
-        if ($perPage == -1) {
-            $users = $query->get();
-            // Envolver en paginator sintético para compatibilidad
-            $users = new \Illuminate\Pagination\LengthAwarePaginator(
-                $users,
-                $users->count(),
-                $users->count(),
-                1
-            );
-        } else {
-            $users = $query->paginate($perPage);
-        }
+        // 15 por página por defecto, máximo 100 (ver App\Support\Paginacion)
+        $perPage = \App\Support\Paginacion::porPagina($request->query('per_page'));
+        $users = $query->paginate($perPage);
         
         return response()->json([
             'data' => UserResource::collection($users)->resolve(),
@@ -419,7 +407,12 @@ class UserController extends Controller
     public function update(UpdateUserRequest $request, User $user)
     {
         $this->authorize('update', $user);
-        
+
+        // Un admin no puede desactivarse a sí mismo (el sistema podría quedar sin admin)
+        if ($user->id === $request->user()->id && $request->has('activo') && !$request->boolean('activo')) {
+            return response()->json(['message' => 'No puedes desactivar tu propia cuenta'], 422);
+        }
+
         $user = $this->userService->update($user, $request->validated());
 
         return response()->json([
@@ -731,7 +724,7 @@ class UserController extends Controller
                     continue;
                 }
 
-                $user->update(['activo' => false]);
+                $this->userService->deactivate($user); // también cierra sus sesiones
                 $success++;
 
             } catch (\Exception $e) {
@@ -779,7 +772,10 @@ class UserController extends Controller
             }
         }
 
-        $user = $this->userService->updateProfile($user, $request->validated());
+        $tokenActual = $user->currentAccessToken();
+        $tokenActualId = $tokenActual instanceof \Laravel\Sanctum\PersonalAccessToken ? $tokenActual->id : null;
+
+        $user = $this->userService->updateProfile($user, $request->validated(), $tokenActualId);
 
         return $this->success(new UserResource($user), 'Perfil actualizado correctamente');
     }

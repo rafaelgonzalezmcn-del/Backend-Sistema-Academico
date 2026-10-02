@@ -21,7 +21,8 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Permite al frontend leer el nombre de los archivos descargados (acta de calificaciones)
+    'exposed_headers' => ['Content-Disposition'],
 
     'max_age' => 0,
 

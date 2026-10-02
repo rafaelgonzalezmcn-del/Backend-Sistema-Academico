@@ -55,24 +55,26 @@ Route::middleware(['throttle:5,1'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| School Years - Lectura pública
+| Catálogos y horarios - Solo usuarios autenticados
 |--------------------------------------------------------------------------
+| Antes eran públicas: /sections/{id} devolvía nombre y correo de todos los
+| estudiantes sin iniciar sesión, y los horarios mostraban nombres de
+| profesores. Ninguna pantalla del frontend las usa sin sesión.
 */
-Route::get('/school-years/active', [SchoolYearController::class, 'active']);
-Route::get('/school-years', [SchoolYearController::class, 'index']);
-Route::get('/school-years/{schoolYear}', [SchoolYearController::class, 'show']);
+Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function () {
+    Route::get('/school-years/active', [SchoolYearController::class, 'active']);
+    Route::get('/school-years', [SchoolYearController::class, 'index']);
+    Route::get('/school-years/{schoolYear}', [SchoolYearController::class, 'show']);
 
-/*
-|--------------------------------------------------------------------------
-| Horarios - Consulta pública (SIN autenticación)
-|--------------------------------------------------------------------------
-| NOTA: Estas rutas son públicas por diseño - permiten a padres, estudiantes
-| y visitantes ver horarios sin necesidad de login.
-| Si se requiere autenticación, agregar middleware 'auth:sanctum'.
-*/
-Route::get('/sections/{id}/schedule', [ClassScheduleController::class, 'sectionSchedule']);
-Route::get('/teachers/{id}/schedule', [ClassScheduleController::class, 'teacherSchedule']);
-Route::get('/students/{sectionId}/schedule', [ClassScheduleController::class, 'studentSchedule']);
+    Route::get('/grades', [GradeController::class, 'index']);
+    Route::get('/grades/{grade}', [GradeController::class, 'show']);
+    Route::get('/sections', [SectionController::class, 'index']);
+    Route::get('/sections/{section}', [SectionController::class, 'show']);
+
+    Route::get('/sections/{id}/schedule', [ClassScheduleController::class, 'sectionSchedule']);
+    Route::get('/teachers/{id}/schedule', [ClassScheduleController::class, 'teacherSchedule']);
+    Route::get('/students/{sectionId}/schedule', [ClassScheduleController::class, 'studentSchedule']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -92,16 +94,6 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function (
 Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function () {
     Route::get('/subjects/{subject}/participantes', [SubjectController::class, 'participantes']);
 });
-
-/*
-|--------------------------------------------------------------------------
-| Grados y Secciones - Lectura pública
-|--------------------------------------------------------------------------
-*/
-Route::get('/grades', [GradeController::class, 'index']);
-Route::get('/grades/{grade}', [GradeController::class, 'show']);
-Route::get('/sections', [SectionController::class, 'index']);
-Route::get('/sections/{section}', [SectionController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
@@ -338,6 +330,10 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function (
     // Verificar estado del curso
     Route::get('/subjects/{subject}/sections/{section}/status', [SubjectController::class, 'getCourseStatus']);
     
+    // Acta de calificaciones (PDF o Excel) — admin o profesor del curso
+    Route::get('/subjects/{subject}/sections/{section}/acta', [\App\Http\Controllers\ActaController::class, 'descargar'])
+        ->middleware('throttle:20,1');
+
     // Cerrar curso masivo para una materia+sección
     Route::post('/subjects/{subject}/sections/{section}/close', [SubjectController::class, 'closeCourse']);
     

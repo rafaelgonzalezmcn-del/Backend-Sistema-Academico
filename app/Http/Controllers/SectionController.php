@@ -64,9 +64,21 @@ class SectionController extends Controller
      */
     public function show(Section $section)
     {
-        // Rutas públicas - no requiere authorize
+        $section = $this->sectionService->show($section);
+
+        // La lista de estudiantes (nombre y correo) solo la ven el admin y
+        // los profesores que dictan en esta sección
+        $user = request()->user();
+        $puedeVerEstudiantes = $user->isAdmin() || ($user->isTeacher()
+            && \App\Models\ClassSchedule::where('section_id', $section->id)
+                ->where('teacher_id', $user->id)->exists());
+
+        if (!$puedeVerEstudiantes) {
+            $section->unsetRelation('students');
+        }
+
         return response()->json([
-            'data' => new SectionResource($this->sectionService->show($section))
+            'data' => new SectionResource($section)
         ]);
     }
 

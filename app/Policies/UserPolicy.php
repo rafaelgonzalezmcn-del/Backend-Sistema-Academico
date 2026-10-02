@@ -178,9 +178,10 @@ class UserPolicy
      */
     public function delete(User $user, User $targetUser)
     {
-        // Admin puede desactivar usuarios
+        // Admin puede desactivar usuarios, pero no a sí mismo
+        // (el sistema podría quedar sin administrador)
         if ($this->isAdmin($user)) {
-            return true;
+            return $user->id !== $targetUser->id;
         }
 
         return false;

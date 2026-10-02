@@ -64,11 +64,18 @@ class UserService
         ];
 
         // Si se proporciona nueva contraseña
-        if (isset($data['password']) && $data['password']) {
+        $cambioPassword = isset($data['password']) && $data['password'];
+        if ($cambioPassword) {
             $updateData['password'] = Hash::make($data['password']);
         }
 
         $user->update($updateData);
+
+        // Si el admin cambió la contraseña o desactivó la cuenta, se cierran
+        // todas las sesiones abiertas de ese usuario
+        if ($cambioPassword || !$user->activo) {
+            $this->cerrarSesiones($user);
+        }
 
         Log::info('Usuario actualizado', ['user_id' => $user->id]);
 
@@ -81,8 +88,21 @@ class UserService
     public function deactivate(User $user): void
     {
         $user->update(['activo' => false]);
+        $this->cerrarSesiones($user);
 
         Log::info('Usuario desactivado', ['user_id' => $user->id]);
+    }
+
+    /**
+     * Revoca los tokens de acceso del usuario (cierra sus sesiones).
+     * Con $exceptoTokenId se conserva la sesión actual (ej.: quien cambia
+     * su propia contraseña sigue conectado en este dispositivo).
+     */
+    public function cerrarSesiones(User $user, ?int $exceptoTokenId = null): void
+    {
+        $user->tokens()
+            ->when($exceptoTokenId, fn ($q) => $q->where('id', '!=', $exceptoTokenId))
+            ->delete();
     }
 
     /**
@@ -138,7 +158,7 @@ class UserService
     /**
      * Actualizar perfil del usuario autenticado
      */
-    public function updateProfile(User $user, array $data): User
+    public function updateProfile(User $user, array $data, ?int $tokenActualId = null): User
     {
         $updateData = [
             'first_name' => $data['first_name'] ?? $user->first_name,
@@ -148,11 +168,18 @@ class UserService
         ];
 
         // Cambiar contraseña si se proporciona
-        if (isset($data['new_password']) && $data['new_password']) {
+        $cambioPassword = isset($data['new_password']) && $data['new_password'];
+        if ($cambioPassword) {
             $updateData['password'] = Hash::make($data['new_password']);
         }
 
         $user->update($updateData);
+
+        // Al cambiar la contraseña se cierran las demás sesiones (otros
+        // dispositivos); la sesión actual se mantiene
+        if ($cambioPassword) {
+            $this->cerrarSesiones($user, $tokenActualId);
+        }
 
         Log::info('Perfil actualizado', ['user_id' => $user->id]);
 

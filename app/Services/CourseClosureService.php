@@ -74,7 +74,7 @@ class CourseClosureService
                 $gradeData = $this->calculateFinalGrade($student->id, $subject->id);
                 
                 // Calcular notas por parcial
-                $parcialGrades = $this->calculateParcialGrades($student->id, $subject->id);
+                $parcialGrades = $gradeData['parciales'] ?? [];
                 
                 // Determinar estado basado en porcentaje (70%)
                 $status = $this->determineStatus($gradeData);
@@ -151,7 +151,7 @@ class CourseClosureService
         }
 
         $gradeData = $this->calculateFinalGrade($student->id, $subject->id);
-        $parcialGrades = $this->calculateParcialGrades($student->id, $subject->id);
+        $parcialGrades = $gradeData['parciales'] ?? [];
         $status = $this->determineStatus($gradeData);
         $courseProfessor = $this->getCourseProfessor($subject, $section);
         
@@ -206,44 +206,55 @@ class CourseClosureService
     }
 
     /**
-     * Calcular nota final usando SUMA TOTAL + PORCENTAJE (70%)
-     * 
-     * Retorna:
-     * - total_obtained: suma de todas las notas obtenidas
-     * - total_possible: suma de todos los puntajes máximos
-     * - percentage: porcentaje obtenido
+     * Calcular la nota final de la materia con el MISMO cálculo que "Mis notas"
+     * (NotaService): cada parcial se calcula con sus parámetros y porcentajes,
+     * y la nota final es la suma de los parciales de todos los módulos.
+     *
+     * Antes se sumaban todos los puntos y se dividía entre los puntos posibles,
+     * sin pesos: un estudiante podía ver 7/10 (aprueba) en "Mis notas" y quedar
+     * reprobado con 66,67 % al cerrar el curso.
+     *
+     * Retorna null si el estudiante no tiene ninguna entrega calificada.
+     *
+     * @return array{total_obtained: float, total_possible: float, percentage: float, final_grade: float, parciales: array}|null
      */
     public function calculateFinalGrade(int $studentId, int $subjectId): ?array
     {
-        // Obtener entregas del estudiante para esta materia
-        $entregas = Entrega::where('estudiante_id', $studentId)
-            ->whereHas('tarea', function ($query) use ($subjectId) {
-                $query->whereHas('modulo', function ($q) use ($subjectId) {
-                    $q->where('materia_id', $subjectId);
-                });
-            })
+        $tieneCalificaciones = Entrega::where('estudiante_id', $studentId)
             ->whereNotNull('nota')
-            ->with('tarea') // Cargar la relación tarea para obtener puntaje máximo
-            ->get();
+            ->whereHas('tarea.modulo', fn ($q) => $q->where('materia_id', $subjectId))
+            ->exists();
 
-        if ($entregas->isEmpty()) {
+        if (!$tieneCalificaciones) {
             return null;
         }
 
-        $totalObtained = 0;
-        $totalPossible = 0;
+        $parciales = $this->parcialesEvaluables($subjectId);
 
-        foreach ($entregas as $entrega) {
-            // Nota obtenida por el estudiante
-            $totalObtained += $entrega->nota;
-            
-            // Puntaje máximo de la tarea (si existe, si no usar 10 por defecto)
-            $maxScore = $entrega->tarea?->puntaje_maximo ?? 10;
-            $totalPossible += $maxScore;
+        $notaService = app(NotaService::class);
+        $totalObtained = 0.0;
+        $totalPossible = 0.0;
+        $detalleParciales = [];
+
+        foreach ($parciales as $parcial) {
+            $resultado = $notaService->calcularNotaParcial($studentId, $parcial);
+            $nota = (float) ($resultado['nota_final'] ?? 0);
+            $maxima = (float) ($parcial->nota_maxima ?? 100);
+
+            $totalObtained += $nota;
+            $totalPossible += $maxima;
+
+            $detalleParciales[] = [
+                'parcial_id' => $parcial->id,
+                'parcial_nombre' => $parcial->nombre,
+                // null = el parcial todavía no tiene calificaciones
+                'nota' => empty($resultado['detalles']) ? null : round($nota, 2),
+                'nota_maxima' => $maxima,
+                'porcentaje_obtenido' => $maxima > 0 ? round(($nota / $maxima) * 100, 2) : 0,
+            ];
         }
 
-        // Evitar división por cero
-        if ($totalPossible === 0) {
+        if ($totalPossible <= 0) {
             return null;
         }
 
@@ -253,7 +264,8 @@ class CourseClosureService
             'total_obtained' => round($totalObtained, 2),
             'total_possible' => round($totalPossible, 2),
             'percentage' => $percentage,
-            'final_grade' => $percentage // Usamos el porcentaje como nota final para compatibilidad
+            'final_grade' => $percentage,
+            'parciales' => $detalleParciales,
         ];
     }
 
@@ -297,47 +309,29 @@ class CourseClosureService
     }
 
     /**
-     * Calcular notas por parcial
-     * Devuelve array: [{parcial_id, parcial_nombre, nota, nota_maxima}, ...]
-     * Ahora usa SUMA en lugar de promedio ponderado
+     * Parciales que cuentan para la nota de una materia: los de sus módulos
+     * que tienen al menos una tarea. Un parcial sin tareas (ej.: el
+     * "Parcial 2" creado por defecto y nunca usado) no cuenta; si contara,
+     * restaría su nota máxima a todos los estudiantes.
+     */
+    public function parcialesEvaluables(int $subjectId)
+    {
+        return Parcial::with('parametros')
+            ->whereHas('modulo', fn ($q) => $q->where('materia_id', $subjectId))
+            ->whereExists(fn ($q) => $q->from('tareas')
+                ->whereColumn('tareas.parcial_id', 'parciales.id')
+                ->whereNull('tareas.deleted_at'))
+            ->orderBy('modulo_id')
+            ->orderBy('numero')
+            ->get();
+    }
+
+    /**
+     * Notas por parcial (mismo cálculo ponderado que "Mis notas")
      */
     public function calculateParcialGrades(int $studentId, int $subjectId): array
     {
-        // Obtener parciales de la materia
-        $parciales = Parcial::whereHas('modulo', function ($query) use ($subjectId) {
-            $query->where('materia_id', $subjectId);
-        })->orderBy('numero')->get();
-
-        $parcialGrades = [];
-
-        foreach ($parciales as $parcial) {
-            // Obtener entregas del estudiante para este parcial
-            $entregas = Entrega::where('estudiante_id', $studentId)
-                ->whereHas('tarea', function ($query) use ($parcial) {
-                    $query->where('parcial_id', $parcial->id);
-                })
-                ->whereNotNull('nota')
-                ->with('tarea')
-                ->get();
-
-            $notaObtenida = 0;
-            $notaMaxima = 0;
-
-            foreach ($entregas as $entrega) {
-                $notaObtenida += $entrega->nota;
-                $notaMaxima += $entrega->tarea?->puntaje_maximo ?? 10;
-            }
-
-            $parcialGrades[] = [
-                'parcial_id' => $parcial->id,
-                'parcial_nombre' => $parcial->nombre,
-                'nota' => $notaObtenida > 0 ? $notaObtenida : null,
-                'nota_maxima' => $notaMaxima,
-                'porcentaje_obtenido' => $notaMaxima > 0 ? round(($notaObtenida / $notaMaxima) * 100, 2) : 0
-            ];
-        }
-
-        return $parcialGrades;
+        return $this->calculateFinalGrade($studentId, $subjectId)['parciales'] ?? [];
     }
 
     /**

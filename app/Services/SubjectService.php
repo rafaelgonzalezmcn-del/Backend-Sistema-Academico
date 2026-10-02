@@ -157,7 +157,7 @@ class SubjectService
         
         // Verificar si se solicita paginación
         $page = request()->query('page');
-        $perPage = request()->query('per_page', 50);
+        $perPage = \App\Support\Paginacion::porPagina(request()->query('per_page'), 50);
         
         if ($roleName === 'profesor') {
             // El profesor solo ve sus estudiantes de la sección específica

@@ -401,8 +401,11 @@ class ClassScheduleService
                 ->map(function ($item) {
                     return [
                         'id' => $item->id,
-                        'start_time' => $item->start_time,
-                        'end_time' => $item->end_time,
+                        // Hora local "HH:mm" (igual que en el resto de horarios).
+                        // Antes se enviaba la fecha completa en UTC y el estudiante
+                        // veía sus clases 5 horas más tarde.
+                        'start_time' => $item->start_time?->format('H:i'),
+                        'end_time' => $item->end_time?->format('H:i'),
                         'subject' => $item->subject->name,
                         'teacher' => $item->teacher->first_name . ' ' . $item->teacher->last_name
                     ];

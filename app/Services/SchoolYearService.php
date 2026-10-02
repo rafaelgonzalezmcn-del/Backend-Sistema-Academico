@@ -19,7 +19,7 @@ class SchoolYearService
      */
     public function index(array $filters): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $perPage = isset($filters['per_page']) ? (int) $filters['per_page'] : 15;
+        $perPage = \App\Support\Paginacion::porPagina($filters['per_page'] ?? null);
         $query = SchoolYear::withCount(['sections']);
 
         if (!empty($filters['only_active'])) {

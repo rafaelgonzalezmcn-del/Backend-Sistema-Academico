@@ -16,6 +16,12 @@ return [
     'name' => env('APP_NAME', 'Sistema Académico'),
 
     /*
+    | Nombre de la institución que aparece en documentos oficiales
+    | (ej.: acta de calificaciones). Configurable en .env.
+    */
+    'institucion' => env('INSTITUCION_NOMBRE', 'Unidad Educativa'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
