@@ -29,6 +29,17 @@ Route::get('/sanctum/csrf-cookie', [CsrfCookieController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
+| Archivos privados (materiales, tareas, entregas)
+|--------------------------------------------------------------------------
+| Solo funciona con una URL firmada y temporal que el backend genera después
+| de verificar permisos (ver App\Support\ArchivoPrivado).
+*/
+Route::get('/archivos', [\App\Http\Controllers\ArchivoController::class, 'ver'])
+    ->middleware(['signed', 'throttle:120,1'])
+    ->name('archivos.ver');
+
+/*
+|--------------------------------------------------------------------------
 | Rutas Públicas
 |--------------------------------------------------------------------------
 */
@@ -100,7 +111,7 @@ Route::get('/sections/{section}', [SectionController::class, 'show']);
 Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function () {
     // Información del usuario actual
     Route::get('/me', function (Request $request) {
-        return $request->user()->load(['role', 'section']);
+        return response()->json(['data' => $request->user()->load(['role', 'section'])]);
     });
 
     // Actualizar perfil del usuario autenticado
@@ -171,16 +182,16 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:60,1'])->group(function (
 Route::middleware(['auth:sanctum', 'role:admin', 'throttle:60,1'])->group(function () {
     // Roles (listar todos)
     Route::get('/roles', function () {
-        return response()->json(Role::all());
+        return response()->json(['data' => Role::all()]);
     });
 
     // Profesores (listar todos)
     Route::get('/teachers', function () {
-        return response()->json(
+        return response()->json(['data' =>
             User::whereHas('role', fn($q) => $q->where('name', 'profesor'))
                 ->where('activo', true)
                 ->get(['id', 'first_name', 'last_name', 'email'])
-        );
+        ]);
     });
     
     // Usuarios (CRUD completo - solo admin)
@@ -314,7 +325,6 @@ Route::middleware(['auth:sanctum', 'active', 'role:profesor,admin', 'throttle:60
     
     // Materiales
     Route::post('/modulos/{modulo}/materiales', [ModuloController::class, 'uploadMaterial']);
-    Route::put('/materiales/{material}', [ModuloController::class, 'updateMaterial']);
     Route::delete('/materiales/{material}', [ModuloController::class, 'destroyMaterial']);
 
     // ================================================

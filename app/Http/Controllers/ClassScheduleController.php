@@ -33,9 +33,7 @@ class ClassScheduleController extends Controller
                 $query->where('teacher_id', $user->id);
             }
             
-            return response()->json([
-                'total' => $query->count()
-            ]);
+            return $this->success(['total' => $query->count()]);
         }
 
         // Para lista completa, requerir rol específico
@@ -75,9 +73,7 @@ class ClassScheduleController extends Controller
             $query->where('teacher_id', $user->id);
         }
 
-        return response()->json([
-            'total' => $query->count()
-        ]);
+        return $this->success(['total' => $query->count()]);
     }
 
     /**

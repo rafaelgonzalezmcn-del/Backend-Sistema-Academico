@@ -21,6 +21,7 @@ class ParcialController extends Controller
 
     public function index($moduloId)
     {
+        $this->authorize('verModulo', [Parcial::class, Modulo::findOrFail($moduloId)]);
         $parciales = $this->parcialService->getByModulo($moduloId);
         return response()->json(['data' => ParcialResource::collection(collect($parciales))->resolve()]);
     }
@@ -28,6 +29,7 @@ class ParcialController extends Controller
     public function store(StoreParcialRequest $request)
     {
         $this->authorize('create', Parcial::class);
+        $this->authorize('gestionarModulo', [Parcial::class, Modulo::findOrFail($request->validated()['modulo_id'])]);
         $parcial = $this->parcialService->create($request->validated());
 
         return response()->json([
@@ -51,6 +53,8 @@ class ParcialController extends Controller
 
     public function parametros($parcialId)
     {
+        $parcial = Parcial::with('modulo')->findOrFail($parcialId);
+        $this->authorize('verModulo', [Parcial::class, $parcial->modulo]);
         $parametros = $this->parcialService->getParametros($parcialId);
         return response()->json(['data' => ParametroResource::collection(collect($parametros))->resolve()]);
     }
@@ -58,6 +62,8 @@ class ParcialController extends Controller
     public function storeParametro(StoreParametroRequest $request)
     {
         $this->authorize('create', Parametro::class);
+        $parcial = Parcial::with('modulo')->findOrFail($request->validated()['parcial_id']);
+        $this->authorize('gestionarModulo', [Parcial::class, $parcial->modulo]);
         $parametro = $this->parcialService->createParametro($request->validated());
 
         return response()->json([
@@ -90,20 +96,26 @@ class ParcialController extends Controller
     public function forzarCreacion($moduloId)
     {
         $modulo = Modulo::findOrFail($moduloId);
+        // Solo admin o el profesor de la materia (antes cualquier usuario autenticado)
+        $this->authorize('gestionarModulo', [Parcial::class, $modulo]);
         $creados = $this->parcialService->asegurarParciales($moduloId);
 
-        return response()->json([
-            'message' => $creados ? 'Parciales creados correctamente' : 'Los parciales ya existían',
-            'creados' => $creados
-        ]);
+        return $this->success(
+            ['creados' => $creados],
+            $creados ? 'Parciales creados correctamente' : 'Los parciales ya existían'
+        );
     }
 
     public function resumenNotas($moduloId)
     {
         $this->authorize('viewResumen', Parcial::class);
-        Modulo::findOrFail($moduloId);
+        // El profesor solo puede ver las notas de los módulos de sus materias
+        $this->authorize('gestionarModulo', [Parcial::class, Modulo::findOrFail($moduloId)]);
 
-        return response()->json($this->parcialService->getResumenNotas($moduloId));
+        $resumen = $this->parcialService->getResumenNotas($moduloId);
+
+        // data = notas por estudiante; meta.parciales = estructura de parciales del módulo
+        return $this->success($resumen['data'], null, ['parciales' => $resumen['parciales']]);
     }
 
     public function misNotas($moduloId)
@@ -111,8 +123,11 @@ class ParcialController extends Controller
         $this->authorize('viewMisNotas', Parcial::class);
         
         $modulo = Modulo::findOrFail($moduloId);
+        $this->authorize('verModulo', [Parcial::class, $modulo]);
         $user = request()->user();
 
-        return response()->json($this->parcialService->getMisNotas($user->id, $moduloId));
+        $misNotas = $this->parcialService->getMisNotas($user->id, $moduloId);
+
+        return $this->success($misNotas['data'], null, ['nota_final' => $misNotas['nota_final']]);
     }
 }

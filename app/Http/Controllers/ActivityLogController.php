@@ -48,9 +48,7 @@ class ActivityLogController extends Controller
             return response()->json(['message' => 'No autorizado'], 403);
         }
         
-        return response()->json([
-            'total' => $this->activityLogService->count($request->all())
-        ]);
+        return $this->success(['total' => $this->activityLogService->count($request->all())]);
     }
 
     /**

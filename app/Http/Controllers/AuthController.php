@@ -30,8 +30,7 @@ use Illuminate\Http\Request;
  *      securityScheme="bearerAuth",
  *      type="http",
  *      scheme="bearer",
- *      bearerFormat="JWT",
- *      description="Ingrese el token JWT obtenido del endpoint de login"
+ *       *      description="Ingrese el token de Sanctum obtenido del endpoint de login"
  * )
  */
 class AuthController extends Controller
@@ -53,14 +52,16 @@ class AuthController extends Controller
      *          @OA\JsonContent(
      *              required={"email", "password"},
      *              @OA\Property(property="email", type="string", format="email", example="admin@admin.com", description="Correo electrónico del usuario"),
-     *              @OA\Property(property="password", type="string", example="admin123", description="Contraseña del usuario")
+     *              @OA\Property(property="password", type="string", example="********", description="Contraseña del usuario")
      *          )
      *      ),
      *      @OA\Response(
      *          response=200,
      *          description="Login exitoso",
      *          @OA\JsonContent(
-     *              @OA\Property(property="token", type="string", example="eyJ0eXAiOiJKV1QiLCJhbGc..."),
+     *              @OA\Property(property="message", type="string", example="Login exitoso"),
+     *              @OA\Property(property="data", type="object",
+     *              @OA\Property(property="token", type="string", example="1|AbCdEf..."),
      *              @OA\Property(property="token_type", type="string", example="Bearer"),
      *              @OA\Property(property="user", type="object",
      *                  @OA\Property(property="id", type="integer", example=1),
@@ -71,6 +72,7 @@ class AuthController extends Controller
      *                      @OA\Property(property="id", type="integer", example=1),
      *                      @OA\Property(property="name", type="string", example="admin")
      *                  )
+     *              )
      *              )
      *          )
      *      ),
@@ -102,15 +104,21 @@ class AuthController extends Controller
     {
         try {
             $result = $this->authService->login($request->validated());
-            return response()->json($result);
+
+            return $this->success([
+                'token' => $result['token'],
+                'token_type' => 'Bearer',
+                'user' => $result['user'],
+            ], $result['message']);
         } catch (\Exception $e) {
-            $statusCode = $e->getCode() ?: 500;
-            if (!is_int($statusCode) || $statusCode < 100 || $statusCode > 599) {
-                $statusCode = 500;
+            // Errores esperados del login (credenciales / cuenta desactivada)
+            if (in_array($e->getCode(), [401, 403], true)) {
+                return response()->json(['message' => $e->getMessage()], $e->getCode());
             }
-            return response()->json([
-                'message' => $e->getMessage()
-            ], $statusCode);
+
+            // Cualquier otro error: se registra, pero no se muestra el detalle interno
+            \Illuminate\Support\Facades\Log::error('Error en login: ' . $e->getMessage());
+            return response()->json(['message' => 'Error al iniciar sesión'], 500);
         }
     }
 

@@ -20,7 +20,8 @@ class TareaController extends Controller
     public function index($moduloId)
     {
         $modulo = Modulo::findOrFail($moduloId);
-        $this->authorize('viewAny', Tarea::class);
+        // Solo admin, el profesor de la materia o estudiantes inscritos
+        $this->authorize('view', $modulo);
 
         $user = request()->user();
         $esEstudiante = $user?->role?->name === 'estudiante';
@@ -35,7 +36,10 @@ class TareaController extends Controller
      */
     public function tareasPorParametro($parametroId)
     {
-        $tareas = $this->tareaService->getByParametro($parametroId);
+        $parametro = \App\Models\Parametro::with('parcial.modulo')->findOrFail($parametroId);
+        $this->authorize('view', $parametro->parcial->modulo);
+
+        $tareas = $this->tareaService->getByParametro((int) $parametroId);
         return response()->json(['data' => TareaResource::collection(collect($tareas))->resolve()]);
     }
 
@@ -49,7 +53,6 @@ class TareaController extends Controller
         $modulo = Modulo::findOrFail($request->validated('modulo_id'));
         $this->authorize('view', $modulo);
 
-        \Illuminate\Support\Facades\Log::info('TareaController store: Request recibido', $request->all());
 
         $tarea = $this->tareaService->create($request->validated(), $request);
 
@@ -107,6 +110,6 @@ class TareaController extends Controller
             return response()->json(['message' => 'Archivo no encontrado'], 404);
         }
 
-        return response()->json($this->tareaService->getDownloadUrl($tarea));
+        return $this->success($this->tareaService->getDownloadUrl($tarea));
     }
 }

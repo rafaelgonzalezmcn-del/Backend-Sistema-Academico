@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ArchivoPrivado;
 use App\Models\Modulo;
 use App\Models\Subject;
 use App\Models\User;
@@ -73,9 +74,7 @@ class ModuloService
     {
         // Eliminar archivos físicos de materiales
         foreach ($modulo->materiales as $material) {
-            if ($material->ruta && \Illuminate\Support\Facades\Storage::disk('public')->exists($material->ruta)) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($material->ruta);
-            }
+            ArchivoPrivado::eliminar($material->ruta);
         }
 
         $modulo->delete();

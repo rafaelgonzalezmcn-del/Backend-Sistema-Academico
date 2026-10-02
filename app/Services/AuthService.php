@@ -18,16 +18,15 @@ class AuthService
     {
         $user = User::where('email', $credentials['email'])->first();
 
-        if (!$user) {
-            throw new \Exception('Usuario no encontrado', 404);
+        // Mismo mensaje si el correo no existe o la contraseña es incorrecta,
+        // para no revelar qué correos están registrados (enumeración de usuarios).
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            throw new \Exception('Credenciales inválidas', 401);
         }
 
+        // Solo se informa que la cuenta está desactivada a quien conoce la contraseña.
         if (!$user->activo) {
             throw new \Exception('Usuario desactivado', 403);
-        }
-
-        if (!Hash::check($credentials['password'], $user->password)) {
-            throw new \Exception('Contraseña incorrecta', 401);
         }
 
         // Actualizar último login

@@ -24,6 +24,7 @@ class GradeService
             'current_page' => $paginated->currentPage(),
             'last_page' => $paginated->lastPage(),
             'total' => $paginated->total(),
+            'per_page' => $paginated->perPage(),
         ];
     }
 

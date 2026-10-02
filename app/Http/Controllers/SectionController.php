@@ -23,9 +23,7 @@ class SectionController extends Controller
         // Rutas públicas - no requiere authorize
         // Si solo se necesita el conteo
         if ($request->has('count_only')) {
-            return response()->json([
-                'total' => $this->sectionService->count($request->all())
-            ]);
+            return $this->success(['total' => $this->sectionService->count($request->all())]);
         }
 
         $sections = $this->sectionService->index($request->all());

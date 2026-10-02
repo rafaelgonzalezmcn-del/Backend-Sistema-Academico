@@ -39,7 +39,9 @@ class ParametroPolicy
      */
     public function update(User $user, Parametro $parametro)
     {
-        return $this->isProfesor($user) || $this->isAdmin($user);
+        // Solo admin o el profesor que dicta la materia de este parámetro
+        return $this->isAdmin($user)
+            || ($this->isProfesor($user) && $this->canAccessModulo($user, $parametro->parcial?->modulo));
     }
 
     /**
@@ -47,7 +49,9 @@ class ParametroPolicy
      */
     public function delete(User $user, Parametro $parametro)
     {
-        return $this->isProfesor($user) || $this->isAdmin($user);
+        // Solo admin o el profesor que dicta la materia de este parámetro
+        return $this->isAdmin($user)
+            || ($this->isProfesor($user) && $this->canAccessModulo($user, $parametro->parcial?->modulo));
     }
 
     /**

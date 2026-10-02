@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ArchivoPrivado;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -49,7 +50,7 @@ class Material extends Model
      */
     public function getUrlAttribute()
     {
-        return asset('storage/' . $this->ruta);
+        return ArchivoPrivado::url($this->ruta);
     }
 
     /**

@@ -102,7 +102,12 @@ describe('CRUD SchoolYears - Admin', function () {
 
         Sanctum::actingAs($admin);
 
-        $this->putJson("/api/school-years/{$year2->id}/activate");
+        $this->putJson("/api/school-years/{$year2->id}/activate")->assertOk();
+
+        // El año activado queda activo y el anterior se desactiva
+        expect($year2->fresh()->active)->toBeTrue()
+            ->and($year1->fresh()->active)->toBeFalse()
+            ->and(SchoolYear::where('active', true)->count())->toBe(1);
     });
 });
 

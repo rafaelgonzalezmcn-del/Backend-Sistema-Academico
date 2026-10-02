@@ -123,7 +123,7 @@ describe('Seguridad - Casos adicionales', function () {
         $profesor = User::factory()->create(['role_id' => $profesorRole->id, 'activo' => true]);
         $token = $profesor->createToken('test-token')->plainTextToken;
         $response = $this->withHeaders(['Authorization' => 'Bearer ' . $token])->getJson('/api/me');
-        $response->assertStatus(200)->assertJsonPath('id', $profesor->id);
+        $response->assertStatus(200)->assertJsonPath('data.id', $profesor->id);
     });
 
     test('estudiante puede acceder a /me con su token', function () {
@@ -131,7 +131,7 @@ describe('Seguridad - Casos adicionales', function () {
         $estudiante = User::factory()->create(['role_id' => $estudianteRole->id, 'activo' => true]);
         $token = $estudiante->createToken('test-token')->plainTextToken;
         $response = $this->withHeaders(['Authorization' => 'Bearer ' . $token])->getJson('/api/me');
-        $response->assertStatus(200)->assertJsonPath('id', $estudiante->id);
+        $response->assertStatus(200)->assertJsonPath('data.id', $estudiante->id);
     });
 
     test('profesor no puede acceder a ruta de admin sin permisos', function () {
@@ -156,5 +156,19 @@ describe('Seguridad - Casos adicionales', function () {
         Sanctum::actingAs($user);
         $response = $this->getJson('/api/me');
         $response->assertStatus(403);
+    });
+});
+
+describe('Seguridad - Middleware de roles con varios roles', function () {
+    test('role:profesor,admin deja pasar a ambos roles y bloquea al estudiante', function () {
+        \Illuminate\Support\Facades\Route::middleware(['auth:sanctum', 'role:profesor,admin'])
+            ->get('/api/_prueba-roles', fn () => response()->json(['data' => 'ok']));
+
+        foreach (['admin' => 200, 'profesor' => 200, 'estudiante' => 403] as $rol => $esperado) {
+            app('auth')->forgetGuards();
+            $user = User::factory()->create(['role_id' => Role::where('name', $rol)->first()->id, 'activo' => true]);
+            Sanctum::actingAs($user);
+            $this->getJson('/api/_prueba-roles')->assertStatus($esperado);
+        }
     });
 });

@@ -33,6 +33,7 @@ class GradeController extends Controller
                 'current_page' => $result['current_page'],
                 'last_page' => $result['last_page'],
                 'total' => $result['total'],
+                'per_page' => $result['per_page'],
             ],
         ]);
     }

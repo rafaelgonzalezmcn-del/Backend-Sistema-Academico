@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ArchivoPrivado;
 use App\Models\Material;
 use App\Models\Modulo;
 use App\Models\User;
@@ -20,12 +21,10 @@ class MaterialService
     {
         $file = $data['archivo'];
         
-        // Generar nombre único
         $originalName = $file->getClientOriginalName();
-        $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
-        
-        // Guardar en storage
-        $path = $file->storeAs('materiales', $fileName, 'public');
+
+        // Guardar en disco privado (no accesible directamente desde el navegador)
+        $path = ArchivoPrivado::guardar($file, 'materiales');
 
         try {
             // Crear registro en DB
@@ -47,9 +46,7 @@ class MaterialService
 
         } catch (\Exception $e) {
             // Si falla DB, eliminar archivo subido
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-            }
+            ArchivoPrivado::eliminar($path);
             throw $e;
         }
     }
@@ -60,9 +57,7 @@ class MaterialService
     public function delete(Material $material): void
     {
         // Eliminar archivo físico
-        if ($material->ruta && Storage::disk('public')->exists($material->ruta)) {
-            Storage::disk('public')->delete($material->ruta);
-        }
+        ArchivoPrivado::eliminar($material->ruta);
 
         $material->delete();
 
@@ -74,7 +69,7 @@ class MaterialService
      */
     public function getDownloadInfo(Material $material): array
     {
-        if (!$material->ruta || !Storage::disk('public')->exists($material->ruta)) {
+        if (!ArchivoPrivado::existe($material->ruta)) {
             return [
                 'success' => false,
                 'message' => 'Archivo no encontrado'
@@ -83,7 +78,7 @@ class MaterialService
 
         return [
             'success' => true,
-            'download_url' => asset('storage/' . $material->ruta),
+            'download_url' => ArchivoPrivado::url($material->ruta),
             'filename' => $material->nombre_archivo
         ];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ArchivoPrivado;
 use App\Models\Tarea;
 use App\Models\Parametro;
 use App\Models\Modulo;
@@ -194,24 +195,32 @@ class TareaService
         // Fin de validación de integridad
         // ============================================================
         
-        // F4-T4: Sanitización XSS
-        $titulo = strip_tags($validated['titulo'] ?? '');
-        $descripcion = !empty($validated['descripcion']) ? strip_tags($validated['descripcion']) : null;
-        
-        // En update, preservar fecha_limite existente si no se proporciona
-        $fechaLimite = $validated['fecha_limite'] ?? null;
-        if ($isUpdate && $fechaLimite === null && $existingTarea) {
-            $fechaLimite = $existingTarea->fecha_limite;
+        // Sanitización XSS: se quitan etiquetas HTML (Vue escapa el resto al mostrar)
+        // En una edición solo se cambian los campos enviados; los demás se conservan.
+        $enviado = fn (string $campo) => !$isUpdate || array_key_exists($campo, $validated);
+
+        $data = [];
+
+        if ($enviado('titulo')) {
+            $data['titulo'] = strip_tags($validated['titulo'] ?? '');
         }
-        
-        $data = [
-            'titulo' => $titulo,
-            'descripcion' => $descripcion,
-            'fecha_limite' => $fechaLimite,
-            'puntaje_maximo' => $this->obtenerNotaMaxima($validated),
-            'parcial_id' => $parcialId,
-            'parametro_id' => $parametroId
-        ];
+        if ($enviado('descripcion')) {
+            $data['descripcion'] = !empty($validated['descripcion']) ? strip_tags($validated['descripcion']) : null;
+        }
+        if ($enviado('fecha_limite') && ($validated['fecha_limite'] ?? null) !== null) {
+            $data['fecha_limite'] = $validated['fecha_limite'];
+        }
+        if (!$isUpdate) {
+            $data['puntaje_maximo'] = $this->obtenerNotaMaxima($validated);
+        } elseif (!empty($validated['puntaje_maximo'])) {
+            $data['puntaje_maximo'] = $validated['puntaje_maximo'];
+        }
+        if ($enviado('parcial_id')) {
+            $data['parcial_id'] = $parcialId;
+        }
+        if ($enviado('parametro_id')) {
+            $data['parametro_id'] = $parametroId;
+        }
 
         if (!$isUpdate) {
             $data['modulo_id'] = $validated['modulo_id'];
@@ -219,14 +228,7 @@ class TareaService
 
         // Manejar archivo si existe
         if ($request && $request->hasFile('archivo')) {
-            $archivo = $this->guardarArchivo($request->file('archivo'));
-            \Illuminate\Support\Facades\Log::info('TareaService: Archivo guardado', $archivo);
-            $data['archivo'] = $archivo;
-        } else {
-            \Illuminate\Support\Facades\Log::info('TareaService: No hay archivo en el request', [
-                'hasFile' => $request ? $request->hasFile('archivo') : 'no request',
-                'files' => $request ? $request->allFiles() : 'no request'
-            ]);
+            $data['archivo'] = $this->guardarArchivo($request->file('archivo'));
         }
 
         return $data;
@@ -257,8 +259,7 @@ class TareaService
     private function guardarArchivo($file): array
     {
         $originalName = $file->getClientOriginalName();
-        $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
-        $path = $file->storeAs('tareas', $fileName, 'public');
+        $path = ArchivoPrivado::guardar($file, 'tareas');
 
         return [
             'ruta' => $path,
@@ -272,9 +273,7 @@ class TareaService
      */
     public function eliminarArchivo(?string $ruta): void
     {
-        if ($ruta && Storage::disk('public')->exists($ruta)) {
-            Storage::disk('public')->delete($ruta);
-        }
+        ArchivoPrivado::eliminar($ruta);
     }
 
     /**
@@ -282,7 +281,7 @@ class TareaService
      */
     public function archivoExiste(?string $ruta): bool
     {
-        return $ruta && Storage::disk('public')->exists($ruta);
+        return ArchivoPrivado::existe($ruta);
     }
 
     /**
@@ -291,7 +290,7 @@ class TareaService
     public function getDownloadUrl(Tarea $tarea): array
     {
         return [
-            'download_url' => asset('storage/' . $tarea->archivo_ruta),
+            'download_url' => ArchivoPrivado::url($tarea->archivo_ruta),
             'filename' => $tarea->archivo_nombre
         ];
     }

@@ -19,7 +19,7 @@ class EntregaResource extends JsonResource
             'tarea_id' => $this->tarea_id,
             'estudiante_id' => $this->estudiante_id,
             'archivo' => $this->archivo,
-            'archivo_url' => $this->archivo_url ?? ($this->archivo ? asset('storage/' . $this->archivo) : null),
+            'archivo_url' => $this->archivo_url ?? \App\Support\ArchivoPrivado::url($this->archivo),
             'fecha_entrega' => $this->fecha_entrega?->toIso8601String(),
             'nota' => $this->nota,
             'observaciones' => $this->observaciones,

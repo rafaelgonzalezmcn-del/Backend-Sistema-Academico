@@ -52,10 +52,33 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
         
-        // Devolver JSON para excepciones de modelo no encontrado en solicitudes API
-        $exceptions->render(function (\Illuminate\Database\ModelNotFoundException $e, \Illuminate\Http\Request $request) {
+        // 404: Laravel convierte ModelNotFoundException (ID inexistente en la ruta)
+        // en NotFoundHttpException ANTES de llegar aquí, por eso se captura esta.
+        // Así nunca se devuelve el stack trace ni rutas internas del servidor.
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
-                return response()->json(['message' => 'Recurso no encontrado'], 404);
+                $message = $e->getPrevious() instanceof \Illuminate\Database\Eloquent\ModelNotFoundException
+                    ? 'Recurso no encontrado'
+                    : 'Ruta no encontrada';
+                return response()->json(['message' => $message], 404);
+            }
+        });
+
+        // 405: método HTTP no permitido en la ruta
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'Método no permitido'], 405);
+            }
+        });
+
+        // 429: límite de solicitudes (throttle)
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(
+                    ['message' => 'Demasiadas solicitudes. Intenta nuevamente en un momento.'],
+                    429,
+                    $e->getHeaders()
+                );
             }
         });
     })->create();

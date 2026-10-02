@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\Parcial;
+use App\Models\Modulo;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
@@ -39,7 +40,29 @@ class ParcialPolicy
      */
     public function update(User $user, Parcial $parcial)
     {
-        return $this->isProfesor($user) || $this->isAdmin($user);
+        return $this->gestionarModulo($user, $parcial->modulo);
+    }
+
+    /**
+     * Gestionar un módulo (configurar parciales, ver notas de todos los
+     * estudiantes): admin o el profesor que dicta la materia del módulo.
+     */
+    public function gestionarModulo(User $user, ?Modulo $modulo)
+    {
+        if (!$modulo) {
+            return false;
+        }
+        return $this->isAdmin($user)
+            || ($this->isProfesor($user) && $this->canAccessModulo($user, $modulo));
+    }
+
+    /**
+     * Ver la información de un módulo: admin, profesor que lo dicta o
+     * estudiante inscrito en la materia.
+     */
+    public function verModulo(User $user, ?Modulo $modulo)
+    {
+        return $this->canAccessModulo($user, $modulo);
     }
 
     /**

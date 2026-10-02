@@ -175,8 +175,11 @@ class ModuloController extends Controller
     public function uploadMaterial(StoreMaterialRequest $request, Modulo $modulo)
     {
         try {
-            // Authorization verificada por route middleware (role:profesor)
+            // El rol se verifica en la ruta; aquí se valida que el profesor dicte esta materia
             $user = request()->user();
+            if (!$this->moduloService->canAccessMateria($user, $modulo->materia_id)) {
+                return response()->json(['message' => 'No tienes acceso a esta materia'], 403);
+            }
             $validated = $request->validated();
 
             $material = $this->materialService->upload($modulo, $user, $validated);
@@ -198,8 +201,10 @@ class ModuloController extends Controller
      */
     public function destroyMaterial(Material $material)
     {
+        // Solo admin o el profesor que dicta la materia del material
+        $this->authorize('delete', $material);
+
         try {
-            // Authorization verificada por route middleware (role:profesor)
             $this->materialService->delete($material);
 
             return response()->json(['message' => 'Material eliminado correctamente']);
@@ -226,7 +231,10 @@ class ModuloController extends Controller
                 return response()->json(['message' => $result['message']], 404);
             }
 
-            return response()->json($result);
+            return $this->success([
+                'download_url' => $result['download_url'],
+                'filename' => $result['filename'],
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Error en downloadMaterial: ' . $e->getMessage());

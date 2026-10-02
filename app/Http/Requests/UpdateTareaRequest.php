@@ -39,7 +39,9 @@ class UpdateTareaRequest extends FormRequest
         if ($value === null) {
             return '';
         }
-        return htmlspecialchars(strip_tags($value), ENT_QUOTES, 'UTF-8');
+        // Solo se quitan etiquetas HTML (igual que al crear). No se usa
+        // htmlspecialchars: guardaría "&amp;" en la BD y Vue lo mostraría literal.
+        return trim(strip_tags($value));
     }
 
     /**
@@ -56,7 +58,7 @@ class UpdateTareaRequest extends FormRequest
         $moduloId = $moduloIdInput ?: $moduloIdActual;
 
         return [
-            'titulo' => 'sometimes|string|max:255',
+            'titulo' => 'sometimes|required|string|max:255',
             'descripcion' => 'nullable|string|max:2000',
             'fecha_limite' => 'sometimes|date',
             'modulo_id' => 'nullable|integer|exists:modulos,id',

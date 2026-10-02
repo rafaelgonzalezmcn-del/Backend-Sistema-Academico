@@ -31,9 +31,7 @@ class SubjectController extends Controller
     public function index(Request $request)
     {
         if ($request->has('count_only')) {
-            return response()->json([
-                'total' => Subject::count()
-            ]);
+            return $this->success(['total' => Subject::count()]);
         }
 
         $cacheKey = 'cache:subjects:all';
@@ -157,13 +155,17 @@ class SubjectController extends Controller
             $user = request()->user();
             $data = $this->subjectService->getParticipantes($subject, $user);
 
-            return response()->json($data);
+            // Con ?page= el servicio devuelve {data, meta}; sin paginar, la lista directa
+            if (isset($data['data'])) {
+                return $this->success($data['data'], null, $data['meta'] ?? []);
+            }
+            return $this->success($data);
 
         } catch (\Exception $e) {
             Log::error('Error en participantes: ' . $e->getMessage());
             
             return response()->json([
-                'message' => 'Error al obtener participantes: ' . $e->getMessage()
+                'message' => 'Error al obtener participantes'
             ], 500);
         }
     }
@@ -211,7 +213,11 @@ class SubjectController extends Controller
                 $options
             );
 
-            return response()->json($result);
+            return $this->success([
+                'processed_students' => $result['processed_students'],
+                'total_students' => $result['total_students'],
+                'errors' => $result['errors'] ?? [],
+            ], $result['message']);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             // El curso ya fue cerrado - devolver mensaje claro
@@ -224,7 +230,7 @@ class SubjectController extends Controller
             Log::error('Error al cerrar curso: ' . $e->getMessage());
 
             return response()->json([
-                'message' => 'Error al cerrar el curso: ' . $e->getMessage()
+                'message' => 'Error al cerrar el curso'
             ], 500);
         }
     }
@@ -289,7 +295,7 @@ class SubjectController extends Controller
             Log::error('Error al cerrar curso para estudiante: ' . $e->getMessage());
 
             return response()->json([
-                'message' => 'Error al cerrar el curso: ' . $e->getMessage()
+                'message' => 'Error al cerrar el curso'
             ], 500);
         }
     }
@@ -303,9 +309,7 @@ class SubjectController extends Controller
         $schoolYear = $section->schoolYear;
         
         if (!$schoolYear) {
-            return response()->json([
-                'is_closed' => false
-            ]);
+            return $this->success(['is_closed' => false]);
         }
 
         $alreadyClosed = $this->courseClosureService->isCourseAlreadyClosedForSubject(
@@ -314,9 +318,7 @@ class SubjectController extends Controller
             $schoolYear->id
         );
 
-        return response()->json([
-            'is_closed' => $alreadyClosed
-        ]);
+        return $this->success(['is_closed' => $alreadyClosed]);
     }
 
     /**
@@ -451,9 +453,6 @@ class SubjectController extends Controller
             return $item;
         });
 
-        return response()->json([
-            'data' => $data,
-            'can_view_grades' => $canViewGrades
-        ]);
+        return $this->success($data, null, ['can_view_grades' => $canViewGrades]);
     }
 }

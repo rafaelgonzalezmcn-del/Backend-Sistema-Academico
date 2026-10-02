@@ -105,9 +105,7 @@ class UserController extends Controller
                 $query->where('section_id', $request->section_id);
             }
             
-            return response()->json([
-                'total' => $query->count()
-            ]);
+            return $this->success(['total' => $query->count()]);
         }
 
         // Para lista completa, requerir autorización
@@ -236,9 +234,7 @@ class UserController extends Controller
             $query->where('section_id', $request->section_id);
         }
 
-        return response()->json([
-            'total' => $query->count()
-        ]);
+        return $this->success(['total' => $query->count()]);
     }
 
     /**
@@ -267,14 +263,14 @@ class UserController extends Controller
         if ($request->has('exclude_user_id')) {
             $currentUser = User::find($request->exclude_user_id);
             if ($currentUser && preg_replace('/\D/', '', $currentUser->identification_number ?? '') === $number) {
-                return response()->json(['available' => true]);
+                return $this->success(['available' => true, 'user' => null]);
             }
         }
 
         $user = User::where('identification_number', $number)->first();
 
         if ($user) {
-            return response()->json([
+            return $this->success([
                 'available' => false,
                 'user' => [
                     'id' => $user->id,
@@ -284,7 +280,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json(['available' => true]);
+        return $this->success(['available' => true, 'user' => null]);
     }
 
     /**
@@ -309,14 +305,14 @@ class UserController extends Controller
         if ($request->has('exclude_user_id')) {
             $currentUser = User::find($request->exclude_user_id);
             if ($currentUser && strtolower(trim($currentUser->email ?? '')) === $email) {
-                return response()->json(['available' => true]);
+                return $this->success(['available' => true, 'user' => null]);
             }
         }
 
         $user = User::where('email', $email)->first();
 
         if ($user) {
-            return response()->json([
+            return $this->success([
                 'available' => false,
                 'user' => [
                     'id' => $user->id,
@@ -326,7 +322,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json(['available' => true]);
+        return $this->success(['available' => true, 'user' => null]);
     }
 
     /**
@@ -366,7 +362,7 @@ class UserController extends Controller
                     ? strtolower(trim($currentUser->email ?? ''))
                     : preg_replace('/\D/', '', $currentUser->identification_number ?? '');
                 if ($currentValue === $value) {
-                    return response()->json(['available' => true]);
+                    return $this->success(['available' => true, 'user' => null]);
                 }
             }
         }
@@ -374,7 +370,7 @@ class UserController extends Controller
         $user = User::where($field, $value)->first();
 
         if ($user) {
-            return response()->json([
+            return $this->success([
                 'available' => false,
                 'user' => [
                     'id' => $user->id,
@@ -384,7 +380,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json(['available' => true]);
+        return $this->success(['available' => true, 'user' => null]);
     }
 
     /**
@@ -471,10 +467,10 @@ class UserController extends Controller
             $data = @json_decode($message, true);
             
             if ($data && isset($data['current_section'])) {
-                return response()->json([
-                    'message' => $data['message'],
-                    'current_section' => $data['current_section']
-                ], 409);
+                // Contexto del conflicto en "data" (formato de error estándar)
+                return $this->error($data['message'], 409, [], [
+                    'current_section' => $data['current_section'],
+                ]);
             }
             
             return response()->json(['message' => $e->getMessage()], 409);
@@ -785,10 +781,7 @@ class UserController extends Controller
 
         $user = $this->userService->updateProfile($user, $request->validated());
 
-        return response()->json([
-            'message' => 'Perfil actualizado correctamente',
-            'user' => new UserResource($user)
-        ]);
+        return $this->success(new UserResource($user), 'Perfil actualizado correctamente');
     }
 
     /**
@@ -798,68 +791,86 @@ class UserController extends Controller
     public function uploadSelfie(Request $request)
     {
         $user = $request->user();
-        
-        Log::info('uploadSelfie - User ID: ' . $user->id);
-        Log::info('uploadSelfie - Request has selfie_data: ' . ($request->has('selfie_data') ? 'yes' : 'no'));
-        Log::info('uploadSelfie - Request hasFile selfie: ' . ($request->hasFile('selfie') ? 'yes' : 'no'));
+        $maxBytes = 2 * 1024 * 1024; // 2 MB
 
-        $imageData = null;
-        $mimeType = 'image/jpeg';
-
-        // Verificar si es base64 (JSON) o multipart
-        if ($request->has('selfie_data')) {
-            // Recibir como JSON con base64
-            $base64Data = $request->input('selfie_data');
-            $mimeType = $request->input('mime_type', 'image/jpeg');
-            
-            if (empty($base64Data)) {
-                return response()->json(['message' => 'No se recibió ninguna imagen'], 422);
+        // Se acepta base64 (JSON) o archivo multipart
+        if ($request->filled('selfie_data')) {
+            $base64 = (string) $request->input('selfie_data');
+            // Permitir prefijo "data:image/png;base64,"
+            if (str_contains($base64, ',')) {
+                $base64 = substr($base64, strpos($base64, ',') + 1);
             }
-            
-            // Decodificar base64
-            $imageData = base64_decode($base64Data);
-            if ($imageData === false) {
+            if (strlen($base64) > (int) ceil($maxBytes * 4 / 3) + 4) {
+                return response()->json(['message' => 'La imagen no puede superar 2 MB'], 422);
+            }
+            $imageData = base64_decode($base64, true); // modo estricto
+            if ($imageData === false || $imageData === '') {
                 return response()->json(['message' => 'Datos base64 inválidos'], 422);
             }
-            
         } elseif ($request->hasFile('selfie')) {
-            // Validar archivo multipart
             $request->validate([
                 'selfie' => 'required|image|mimes:jpeg,png|max:2048'
             ]);
-
-            $file = $request->file('selfie');
-            $imageData = file_get_contents($file->getRealPath());
-            $mimeType = $file->getMimeType();
+            $imageData = file_get_contents($request->file('selfie')->getRealPath());
         } else {
             return response()->json(['message' => 'No se recibió ninguna imagen'], 422);
         }
-        
-        Log::info('uploadSelfie - Image data length: ' . strlen($imageData));
-        Log::info('uploadSelfie - MIME type: ' . $mimeType);
-        
-        // Para PostgreSQL con datos binarios, necesitamos usar pg_escape_bytea
-        // o actualizar el modelo de forma diferente
+
+        if (strlen($imageData) > $maxBytes) {
+            return response()->json(['message' => 'La imagen no puede superar 2 MB'], 422);
+        }
+
+        // El tipo se detecta a partir del contenido real del archivo.
+        // Nunca se usa el "mime_type" que envía el cliente: así nadie puede
+        // guardar HTML/JS haciéndolo pasar por imagen (XSS almacenado).
+        $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->buffer($imageData);
+        if (!in_array($mimeType, self::SELFIE_MIMES, true) || @getimagesizefromstring($imageData) === false) {
+            return response()->json(['message' => 'La selfie debe ser una imagen JPEG o PNG válida'], 422);
+        }
+
         try {
-            // Usar el driver PDO específico de PostgreSQL
+            // PostgreSQL bytea: se usa PDO directamente para enviar datos binarios
             $pdo = \Illuminate\Support\Facades\DB::connection()->getPdo();
-            
-            // Preparar la sentencia con casting a bytea
             $stmt = $pdo->prepare('UPDATE users SET selfie = :selfie::bytea, selfie_mime = :mime WHERE id = :id');
             $stmt->bindValue(':selfie', $imageData, \PDO::PARAM_LOB);
             $stmt->bindValue(':mime', $mimeType);
             $stmt->bindValue(':id', $user->id, \PDO::PARAM_INT);
             $stmt->execute();
-            
-            Log::info('uploadSelfie - Update successful');
         } catch (\Exception $e) {
             Log::error('uploadSelfie - Error: ' . $e->getMessage());
-            return response()->json(['message' => 'Error al guardar: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Error al guardar la selfie'], 500);
         }
 
         return response()->json([
             'message' => 'Selfie actualizada correctamente'
         ]);
+    }
+
+    /** Tipos de imagen permitidos para la selfie */
+    private const SELFIE_MIMES = ['image/jpeg', 'image/png'];
+
+    /**
+     * Respuesta segura para devolver una selfie guardada en BD.
+     */
+    private function selfieResponse(User $user)
+    {
+        if (!$user->selfie) {
+            return response()->json(['message' => 'No hay selfie disponible'], 404);
+        }
+
+        // Los datos bytea de PostgreSQL pueden venir como resource
+        $selfieData = $user->selfie;
+        if (is_resource($selfieData)) {
+            $selfieData = stream_get_contents($selfieData);
+        }
+
+        // Por si quedaron registros antiguos con un MIME no permitido
+        $mime = in_array($user->selfie_mime, self::SELFIE_MIMES, true) ? $user->selfie_mime : 'image/jpeg';
+
+        return response($selfieData)
+            ->header('Content-Type', $mime)
+            ->header('X-Content-Type-Options', 'nosniff')
+            ->header('Content-Security-Policy', "default-src 'none'");
     }
 
     /**
@@ -900,19 +911,7 @@ class UserController extends Controller
             ], 403);
         }
         
-        if (!$user->selfie || !$user->selfie_mime) {
-            return response()->json([
-                'message' => 'No hay selfie disponible'
-            ], 404);
-        }
-
-        $selfieData = $user->selfie;
-        if (is_resource($selfieData)) {
-            $selfieData = stream_get_contents($selfieData);
-        }
-
-        return response($selfieData)
-            ->header('Content-Type', $user->selfie_mime);
+        return $this->selfieResponse($user);
     }
 
     /**
@@ -921,27 +920,7 @@ class UserController extends Controller
      */
     public function getSelfie(Request $request)
     {
-        $user = $request->user();
-        
-        Log::info('getSelfie - User ID: ' . $user->id);
-        Log::info('getSelfie - selfie field exists: ' . (isset($user->selfie) ? 'yes' : 'no'));
-        Log::info('getSelfie - selfie_mime: ' . ($user->selfie_mime ?? 'null'));
-
-        if (!$user->selfie || !$user->selfie_mime) {
-            return response()->json([
-                'message' => 'No hay selfie disponible'
-            ], 404);
-        }
-
-        // Los datos bytea de PostgreSQL pueden venir como resource
-        // Necesitamos convertirlos a string
-        $selfieData = $user->selfie;
-        if (is_resource($selfieData)) {
-            $selfieData = stream_get_contents($selfieData);
-        }
-
-        return response($selfieData)
-            ->header('Content-Type', $user->selfie_mime);
+        return $this->selfieResponse($request->user());
     }
 
     /**
@@ -965,7 +944,7 @@ class UserController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('deleteSelfie - Error: ' . $e->getMessage());
-            return response()->json(['message' => 'Error al eliminar: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Error al eliminar la selfie'], 500);
         }
     }
 }

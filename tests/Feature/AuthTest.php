@@ -29,21 +29,21 @@ describe('Autenticación', function () {
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'user' => [
-                    'id',
-                    'first_name',
-                    'last_name',
-                    'email',
-                    'role_id',
-                    'activo',
+                'message',
+                'data' => [
+                    'user' => [
+                        'id',
+                        'first_name',
+                        'last_name',
+                        'email',
+                        'role_id',
+                        'activo',
+                    ],
+                    'token',
+                    'token_type',
                 ],
-                'token',
             ])
-            ->assertJson([
-                'user' => [
-                    'email' => 'test@example.com',
-                ],
-            ]);
+            ->assertJsonPath('data.user.email', 'test@example.com');
 
         $this->assertDatabaseHas('personal_access_tokens', [
             'tokenable_id' => $user->id,
@@ -66,20 +66,37 @@ describe('Autenticación', function () {
 
         $response->assertStatus(401)
             ->assertJson([
-                'message' => 'Contraseña incorrecta',
+                'message' => 'Credenciales inválidas',
             ]);
     });
 
-    test('login con email inexistente devuelve error 404', function () {
+    test('login con email inexistente devuelve el mismo 401 que contraseña incorrecta', function () {
         $response = $this->postJson('/api/login', [
             'email' => 'nonexistent@example.com',
             'password' => 'any_password',
         ]);
 
-        $response->assertStatus(404)
+        // No debe revelar si el correo existe (evita enumeración de usuarios)
+        $response->assertStatus(401)
             ->assertJson([
-                'message' => 'Usuario no encontrado',
+                'message' => 'Credenciales inválidas',
             ]);
+    });
+
+    test('usuario inactivo con contraseña incorrecta no revela que está desactivado', function () {
+        $role = Role::where('name', 'admin')->first();
+
+        User::factory()->create([
+            'email' => 'inactive2@example.com',
+            'password' => Hash::make('password123'),
+            'role_id' => $role->id,
+            'activo' => false,
+        ]);
+
+        $this->postJson('/api/login', [
+            'email' => 'inactive2@example.com',
+            'password' => 'otra_clave',
+        ])->assertStatus(401)->assertJson(['message' => 'Credenciales inválidas']);
     });
 
     test('login con usuario inactivo devuelve error 403', function () {
@@ -140,16 +157,18 @@ describe('Acceso con Token', function () {
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'id',
-                'first_name',
-                'last_name',
-                'email',
-                'role_id',
-                'role' => [
+                'data' => [
                     'id',
-                    'name',
+                    'first_name',
+                    'last_name',
+                    'email',
+                    'role_id',
+                    'role' => [
+                        'id',
+                        'name',
+                    ],
+                    'activo',
                 ],
-                'activo',
             ]);
     });
 
@@ -185,10 +204,10 @@ describe('Endpoint /me', function () {
         ])->getJson('/api/me');
 
         $response->assertStatus(200)
-            ->assertJsonPath('id', $user->id)
-            ->assertJsonPath('email', $user->email)
-            ->assertJsonPath('role.name', 'admin')
-            ->assertJsonPath('role.id', $roleAdmin->id);
+            ->assertJsonPath('data.id', $user->id)
+            ->assertJsonPath('data.email', $user->email)
+            ->assertJsonPath('data.role.name', 'admin')
+            ->assertJsonPath('data.role.id', $roleAdmin->id);
     });
 
     test('el campo role no es null', function () {
@@ -206,6 +225,6 @@ describe('Endpoint /me', function () {
         ])->getJson('/api/me');
 
         $response->assertStatus(200);
-        $this->assertNotNull($response->json('role'));
+        $this->assertNotNull($response->json('data.role'));
     });
 });

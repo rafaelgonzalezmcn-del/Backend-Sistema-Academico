@@ -66,9 +66,10 @@ class TeacherDashboardController extends Controller
      */
     private function getAdminDashboard()
     {
-        $cacheKey = 'teacher:dashboard:admin';
+        $cacheKey = 'teacher:dashboard:admin:v2';
         
-        return Cache::remember($cacheKey, self::DASHBOARD_TTL, function () {
+        // En caché se guardan solo los datos (array); la respuesta se arma después
+        return $this->success(Cache::remember($cacheKey, self::DASHBOARD_TTL, function () {
             // Total de cursos (combinaciones únicas de materia + sección)
             $totalCourses = ClassSchedule::distinct('subject_id', 'section_id')->count('subject_id');
             
@@ -84,15 +85,15 @@ class TeacherDashboardController extends Controller
             $activeSections = Section::count();
             $openCourses = $activeSections - $closedCourses;
             
-            return response()->json([
+            return [
                 'summary' => [
                     'total_courses' => $totalCourses,
                     'total_students' => $totalStudents,
                     'closed_courses' => $closedCourses,
                     'open_courses' => max(0, $openCourses)
                 ]
-            ]);
-        });
+            ];
+        }));
     }
 
     /**
@@ -100,9 +101,10 @@ class TeacherDashboardController extends Controller
      */
     private function getTeacherDashboard(User $teacher)
     {
-        $cacheKey = "teacher:dashboard:{$teacher->id}";
+        $cacheKey = "teacher:dashboard:{$teacher->id}:v2";
         
-        return Cache::remember($cacheKey, self::DASHBOARD_TTL, function () use ($teacher) {
+        // En caché se guardan solo los datos (array); la respuesta se arma después
+        return $this->success(Cache::remember($cacheKey, self::DASHBOARD_TTL, function () use ($teacher) {
             // Obtener los horarios del profesor
             $schedules = ClassSchedule::where('teacher_id', $teacher->id)
                 ->with(['subject', 'section', 'section.schoolYear'])
@@ -145,15 +147,15 @@ class TeacherDashboardController extends Controller
                 }
             }
             
-            return response()->json([
+            return [
                 'summary' => [
                     'total_courses' => $totalCourses,
                     'total_students' => $totalStudents,
                     'closed_courses' => $closedCourses,
                     'open_courses' => $openCourses
                 ]
-            ]);
-        });
+            ];
+        }));
     }
 
     /**
@@ -161,9 +163,10 @@ class TeacherDashboardController extends Controller
      */
     private function getAdminCourseStats()
     {
-        $cacheKey = 'teacher:courses:stats:admin';
+        $cacheKey = 'teacher:courses:stats:admin:v2';
         
-        return Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () {
+        // En caché se guardan solo los datos (array); la respuesta se arma después
+        return $this->success(Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () {
             // Obtener todas las combinaciones de materia + sección
             $schedules = ClassSchedule::with([
                 'subject',
@@ -191,10 +194,10 @@ class TeacherDashboardController extends Controller
                 );
             }
             
-            return response()->json([
+            return [
                 'courses' => $stats
-            ]);
-        });
+            ];
+        }));
     }
 
     /**
@@ -202,9 +205,10 @@ class TeacherDashboardController extends Controller
      */
     private function getTeacherCourseStats(User $teacher)
     {
-        $cacheKey = "teacher:courses:stats:{$teacher->id}";
+        $cacheKey = "teacher:courses:stats:{$teacher->id}:v2";
         
-        return Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () use ($teacher) {
+        // En caché se guardan solo los datos (array); la respuesta se arma después
+        return $this->success(Cache::remember($cacheKey, self::COURSE_STATS_TTL, function () use ($teacher) {
             // Solo los cursos donde el profesor es teacher
             $schedules = ClassSchedule::where('teacher_id', $teacher->id)
                 ->with([
@@ -242,10 +246,10 @@ class TeacherDashboardController extends Controller
                 );
             }
             
-            return response()->json([
+            return [
                 'courses' => $stats
-            ]);
-        });
+            ];
+        }));
     }
 
     /**

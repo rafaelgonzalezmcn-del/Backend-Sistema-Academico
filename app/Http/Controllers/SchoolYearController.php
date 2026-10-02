@@ -23,9 +23,7 @@ class SchoolYearController extends Controller
         // Rutas públicas - no requiere authorize
         // Si solo se necesita el conteo
         if ($request->has('count_only')) {
-            return response()->json([
-                'total' => $this->schoolYearService->count($request->all())
-            ]);
+            return $this->success(['total' => $this->schoolYearService->count($request->all())]);
         }
 
         $schoolYears = $this->schoolYearService->index($request->all());

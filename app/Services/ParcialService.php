@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Illuminate\Validation\ValidationException;
+
 use App\Models\Parcial;
 use App\Models\Parametro;
 use App\Models\Modulo;
@@ -83,9 +85,11 @@ class ParcialService
 
     public function createParametro(array $validated): Parametro
     {
+        $this->validarSumaPorcentajes((int) $validated['parcial_id'], (float) ($validated['porcentaje'] ?? 0));
+
         return Parametro::create([
             'nombre' => $validated['nombre'],
-            'tipo' => $validated['tipo'],
+            'tipo' => $validated['tipo'] ?? Parametro::TIPO_OTRO,
             'parcial_id' => $validated['parcial_id'],
             'porcentaje' => $validated['porcentaje'] ?? 0,
             'nota_maxima_default' => $validated['nota_maxima_default'] ?? 100
@@ -94,8 +98,35 @@ class ParcialService
 
     public function updateParametro(Parametro $parametro, array $validated): Parametro
     {
+        if (array_key_exists('porcentaje', $validated) && $validated['porcentaje'] !== null) {
+            $this->validarSumaPorcentajes($parametro->parcial_id, (float) $validated['porcentaje'], $parametro->id);
+        }
+
         $parametro->update($validated);
         return $parametro;
+    }
+
+    /**
+     * Regla: los porcentajes de los parámetros de un parcial suman como máximo 100 %.
+     * Si se superara, la nota del parcial podría pasar de su nota máxima.
+     *
+     * @throws ValidationException (HTTP 422 con el total actual en el mensaje)
+     */
+    private function validarSumaPorcentajes(int $parcialId, float $nuevoPorcentaje, ?int $excluirParametroId = null): void
+    {
+        $sumaOtros = (float) Parametro::where('parcial_id', $parcialId)
+            ->when($excluirParametroId, fn ($q) => $q->where('id', '!=', $excluirParametroId))
+            ->sum('porcentaje');
+
+        $total = round($sumaOtros + $nuevoPorcentaje, 2);
+
+        if ($total > 100) {
+            $disponible = max(0, round(100 - $sumaOtros, 2));
+            throw ValidationException::withMessages([
+                'porcentaje' => "Los porcentajes del parcial sumarían {$total} %. El máximo es 100 %: "
+                    . "a este parámetro le puedes asignar hasta {$disponible} %.",
+            ]);
+        }
     }
 
     public function deleteParametro(Parametro $parametro): void

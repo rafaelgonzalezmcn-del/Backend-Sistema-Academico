@@ -16,6 +16,8 @@ class Parametro extends Model
     const TIPO_TAREAS = 'tareas';
     const TIPO_ACTUACION = 'actuacion';
     const TIPO_EXAMENES = 'examenes';
+    /** Parámetro personalizado creado por el profesor (puede haber varios por parcial) */
+    const TIPO_OTRO = 'otro';
 
     protected $fillable = [
         'nombre',

@@ -36,7 +36,9 @@ class CalificarEntregaRequest extends FormRequest
         if ($value === null) {
             return null;
         }
-        return htmlspecialchars(strip_tags($value), ENT_QUOTES, 'UTF-8');
+        // Solo se quitan etiquetas HTML. No se usa htmlspecialchars: guardaría
+        // "&amp;" en la BD y Vue lo mostraría literal (Vue ya escapa al mostrar).
+        return trim(strip_tags($value));
     }
 
     /**
@@ -45,10 +47,13 @@ class CalificarEntregaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nota' => 'required|numeric|min:0|max:100',
+            // El máximo depende del puntaje de cada tarea (hasta 1000):
+            // se valida en el controlador. Antes estaba fijo en 100.
+            'nota' => 'required|numeric|min:0|max:1000',
             'observaciones' => 'nullable|string',
-            'tarea_id' => 'nullable|exists:tareas,id',
-            'estudiante_id' => 'nullable|exists:users,id'
+            // Obligatorios solo en POST /calificar-estudiante (calificación directa)
+            'tarea_id' => [$this->esCalificacionDirecta() ? 'required' : 'nullable', 'integer', 'exists:tareas,id'],
+            'estudiante_id' => [$this->esCalificacionDirecta() ? 'required' : 'nullable', 'integer', 'exists:users,id'],
         ];
     }
 
@@ -66,5 +71,10 @@ class CalificarEntregaRequest extends FormRequest
             'tarea_id.exists' => 'La tarea no existe',
             'estudiante_id.exists' => 'El estudiante no existe'
         ];
+    }
+
+    private function esCalificacionDirecta(): bool
+    {
+        return $this->is('api/calificar-estudiante');
     }
 }

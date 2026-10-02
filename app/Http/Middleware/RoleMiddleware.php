@@ -13,7 +13,7 @@ class RoleMiddleware
      * Verifica que el usuario tenga el rol requerido.
      * Soporta múltiples roles separados por coma (ej: role:profesor,admin)
      */
-    public function handle(Request $request, Closure $next, string $roles): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
         $user = $request->user();
 
@@ -31,15 +31,16 @@ class RoleMiddleware
             ], 403);
         }
 
-        // Convertir roles a array (soporta múltiples roles)
-        $rolesArray = array_map('trim', explode(',', $roles));
+        // Laravel separa los parámetros por coma: "role:profesor,admin" llega
+        // como dos argumentos ("profesor", "admin"). Antes se recibía uno solo
+        // ($roles = "profesor") y el admin quedaba bloqueado en esas rutas.
+        $rolesArray = array_map('trim', $roles);
         
         // Verificar si el rol del usuario está en la lista de roles permitidos
         if (!in_array($user->role->name, $rolesArray)) {
+            // No se revela qué rol se necesita ni cuál tiene el usuario
             return response()->json([
-                'message' => 'No tienes permisos para acceder a este recurso',
-                'required_roles' => $rolesArray,
-                'current_role' => $user->role->name
+                'message' => 'No tienes permisos para acceder a este recurso'
             ], 403);
         }
 

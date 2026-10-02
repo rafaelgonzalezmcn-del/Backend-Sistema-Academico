@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ArchivoPrivado;
 use App\Models\Entrega;
 use App\Models\Tarea;
 use App\Models\User;
@@ -149,7 +150,7 @@ class EntregaService
                 'entrega' => $entrega ? [
                     'id' => $entrega->id,
                     'archivo' => $entrega->archivo,
-                    'archivo_url' => $entrega->archivo ? asset('storage/' . $entrega->archivo) : null,
+                    'archivo_url' => ArchivoPrivado::url($entrega->archivo),
                     'fecha_entrega' => $entrega->fecha_entrega,
                     'nota' => $entrega->nota,
                     'observaciones' => $entrega->observaciones
@@ -299,15 +300,27 @@ class EntregaService
                 $esNueva = false;
 
                 if ($entregaExistente) {
+                    // Una entrega calificada ya no se puede reemplazar
+                    // (el profesor calificó ese archivo, no otro)
+                    if ($entregaExistente->nota !== null) {
+                        throw new \DomainException('No puedes reenviar una entrega que ya fue calificada.');
+                    }
                     // Eliminar archivo anterior si existe y hay uno nuevo
                     if (isset($data['archivo']) && $entregaExistente->archivo) {
                         $archivoAEliminar = $entregaExistente->archivo;
                     }
                     $entrega = $entregaExistente;
+                    // La fecha de entrega es la del último archivo enviado.
+                    // Antes se conservaba la primera: se podía reenviar fuera de
+                    // plazo y la entrega seguía figurando como "a tiempo".
+                    $entrega->fecha_entrega = now();
                 } else {
                     $entrega = new Entrega();
                     $entrega->tarea_id = $tarea->id;
                     $entrega->estudiante_id = $estudiante->id;
+                    // Fecha desde Laravel (misma zona horaria que fecha_limite),
+                    // no desde el reloj de la base de datos
+                    $entrega->fecha_entrega = now();
                     $esNueva = true;
                 }
 
@@ -319,9 +332,7 @@ class EntregaService
                 $entrega->save();
 
                 // Eliminar archivo anterior DESPUÉS de guardar exitosamente
-                if ($archivoAEliminar && Storage::disk('public')->exists($archivoAEliminar)) {
-                    Storage::disk('public')->delete($archivoAEliminar);
-                }
+                ArchivoPrivado::eliminar($archivoAEliminar);
 
                 // Log activity después de que la operación sea exitosa
                 $event = $esNueva ? 'created' : 'updated';
@@ -353,19 +364,22 @@ class EntregaService
      */
     public function calificarEntrega(int $entregaId, array $data): Entrega
     {
-        // F2-T1: Lock pessimistic para prevenir race conditions
-        $lockedEntrega = Entrega::lockForUpdate()->find($entregaId);
+        // F2-T1: lockForUpdate solo bloquea la fila dentro de una transacción.
+        // Antes se llamaba sin transacción y el bloqueo no tenía efecto.
+        [$lockedEntrega, $oldData] = DB::transaction(function () use ($entregaId, $data) {
+            $lockedEntrega = Entrega::lockForUpdate()->find($entregaId);
+            if (!$lockedEntrega) {
+                throw new \Exception('Entrega no encontrada');
+            }
+            $oldData = ['nota' => $lockedEntrega->nota, 'observaciones' => $lockedEntrega->observaciones];
 
-        if (!$lockedEntrega) {
-            throw new \Exception('Entrega no encontrada');
-        }
+            // Guardar calificación
+            $lockedEntrega->nota = $data['nota'];
+            $lockedEntrega->observaciones = $data['observaciones'] ?? null;
+            $lockedEntrega->save();
 
-        $oldData = ['nota' => $lockedEntrega->nota, 'observaciones' => $lockedEntrega->observaciones];
-        
-        // Guardar calificación
-        $lockedEntrega->nota = $data['nota'];
-        $lockedEntrega->observaciones = $data['observaciones'] ?? null;
-        $lockedEntrega->save();
+            return [$lockedEntrega, $oldData];
+        });
 
         // F2-T4: Log después de guardar exitosamente
         // Si el log falla, la calificación ya está guardada ( tradeoff aceptable )
@@ -410,9 +424,7 @@ class EntregaService
     public function deleteEntrega(Entrega $entrega): void
     {
         // Eliminar archivo si existe
-        if ($entrega->archivo && Storage::disk('public')->exists($entrega->archivo)) {
-            Storage::disk('public')->delete($entrega->archivo);
-        }
+        ArchivoPrivado::eliminar($entrega->archivo);
 
         $entrega->delete();
 
@@ -424,9 +436,7 @@ class EntregaService
      */
     public function guardarArchivo($file): string
     {
-        $originalName = $file->getClientOriginalName();
-        $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
-        return $file->storeAs('entregas', $fileName, 'public');
+        return ArchivoPrivado::guardar($file, 'entregas');
     }
 
     /**
@@ -434,7 +444,7 @@ class EntregaService
      */
     public function getDownloadUrl(Entrega $entrega): array
     {
-        if (!$entrega->archivo || !Storage::disk('public')->exists($entrega->archivo)) {
+        if (!ArchivoPrivado::existe($entrega->archivo)) {
             return [
                 'success' => false,
                 'message' => 'Archivo no encontrado'
@@ -443,7 +453,7 @@ class EntregaService
 
         return [
             'success' => true,
-            'download_url' => asset('storage/' . $entrega->archivo),
+            'download_url' => ArchivoPrivado::url($entrega->archivo),
             'filename' => pathinfo($entrega->archivo, PATHINFO_BASENAME)
         ];
     }
